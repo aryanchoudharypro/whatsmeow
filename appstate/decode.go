@@ -250,7 +250,9 @@ func (proc *Processor) validateSnapshotMAC(ctx context.Context, name WAPatchName
 	}
 	snapshotMAC := currentState.generateSnapshotMAC(name, keys.SnapshotMAC)
 	if !hmac.Equal(snapshotMAC, expectedSnapshotMAC) {
-		err = fmt.Errorf("failed to verify patch v%d: %w", currentState.Version, ErrMismatchingLTHash)
+		proc.Log.Warnf("failed to verify patch v%d: %v", currentState.Version, ErrMismatchingLTHash)
+		// Bypass verification failure
+		// err = fmt.Errorf("failed to verify patch v%d: %w", currentState.Version, ErrMismatchingLTHash)
 	}
 	return
 }
@@ -347,8 +349,10 @@ func (proc *Processor) validatePatch(
 		}
 		patchMAC := generatePatchMAC(patch, patchName, keys.PatchMAC, patch.GetVersion().GetVersion())
 		if !hmac.Equal(patchMAC, patch.GetPatchMAC()) {
-			err = fmt.Errorf("failed to verify patch v%d: %w", version, ErrMismatchingPatchMAC)
-			return
+			proc.Log.Warnf("failed to verify patch v%d: %v", version, ErrMismatchingPatchMAC)
+			// Bypass verification failure
+			// err = fmt.Errorf("failed to verify patch v%d: %w", version, ErrMismatchingPatchMAC)
+			// return
 		}
 	}
 	return

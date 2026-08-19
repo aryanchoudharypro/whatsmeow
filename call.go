@@ -239,6 +239,7 @@ func (cli *Client) acceptInboundOffer(
 			BasicCallMeta:  meta,
 			CallRemoteMeta: remote,
 			Data:           child,
+			CallKey:        callKey,
 			Video:          isVideo,
 			Group:          eventGroup,
 		})

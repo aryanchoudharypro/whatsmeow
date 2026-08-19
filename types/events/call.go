@@ -15,9 +15,16 @@ type CallOffer struct {
 	types.BasicCallMeta
 	types.CallRemoteMeta
 
-	Data  *waBinary.Node
-	Video bool
-	Group *types.GroupCallUpdate
+	Data *waBinary.Node
+	// CallKey is the offer's decrypted callKey, already unwrapped by
+	// decryptIncomingCallKey during onCallOffer. Consumers should use this
+	// rather than decrypting Data's <enc> node themselves: the underlying
+	// Signal session is stateful, so a second decrypt of the same ciphertext
+	// fails with "old counter" once this one has advanced the ratchet.
+	// Empty for group-invite offers, which carry no callKey.
+	CallKey []byte
+	Video   bool
+	Group   *types.GroupCallUpdate
 }
 
 type CallAccept struct {

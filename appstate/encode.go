@@ -260,6 +260,44 @@ func BuildStar(target, sender types.JID, messageID types.MessageID, fromMe, star
 	}
 }
 
+func newDeleteMessageForMeMutation(targetJID, senderJID string, messageID types.MessageID, fromMe string, deleteMedia bool, messageTimestamp time.Time) MutationInfo {
+	return MutationInfo{
+		Index:   []string{IndexDeleteMessageForMe, targetJID, messageID, fromMe, senderJID},
+		Version: 2,
+		Value: &waSyncAction.SyncActionValue{
+			DeleteMessageForMeAction: &waSyncAction.DeleteMessageForMeAction{
+				DeleteMedia:      proto.Bool(deleteMedia),
+				MessageTimestamp: proto.Int64(messageTimestamp.UnixMilli()),
+			},
+		},
+	}
+}
+
+// BuildDeleteMessageForMe builds an app state patch for deleting a message
+// locally ("Delete for me"). Unlike BuildRevoke, this does not remove the
+// message for other chat participants - it only hides it in your own view,
+// but (unlike a purely local delete) syncs that across all of your own
+// linked devices, matching official WhatsApp client behavior.
+//
+// Ported from https://github.com/tulir/whatsmeow/pull/702, adapted to the
+// current Processor.EncodePatch/waSyncAction API.
+func BuildDeleteMessageForMe(target, sender types.JID, messageID types.MessageID, fromMe, deleteMedia bool, messageTimestamp time.Time) PatchInfo {
+	isFromMe := "0"
+	if fromMe {
+		isFromMe = "1"
+	}
+	targetJID, senderJID := target.String(), sender.String()
+	if target.User == sender.User {
+		senderJID = "0"
+	}
+	return PatchInfo{
+		Type: WAPatchRegularHigh,
+		Mutations: []MutationInfo{
+			newDeleteMessageForMeMutation(targetJID, senderJID, messageID, isFromMe, deleteMedia, messageTimestamp),
+		},
+	}
+}
+
 func (proc *Processor) EncodePatch(ctx context.Context, keyID []byte, state HashState, patchInfo PatchInfo) ([]byte, error) {
 	keys, err := proc.getAppStateKey(ctx, keyID)
 	if err != nil {

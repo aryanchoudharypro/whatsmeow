@@ -197,6 +197,20 @@ type SetStatusInput struct {
 	Duration jsontime.Seconds `json:"ephemeral_duration_sec"`
 }
 
+// TextStatus is a user's About/status text, as returned by the newer
+// xwa2_text_status_list mex query (the read-side counterpart of
+// SetStatusMessage). The legacy usync <status/> node is no longer kept in
+// sync with this once a client has updated the status via that mutation, so
+// this is the only reliable way to read a fresh value.
+type TextStatus struct {
+	JID   JID             `json:"jid"`
+	Text  string          `json:"text"`
+	Emoji *SetStatusEmoji `json:"emoji"`
+	// LastUpdateTime is a unix timestamp encoded as a JSON string by the server.
+	LastUpdateTime       string `json:"last_update_time"`
+	EphemeralDurationSec int    `json:"ephemeral_duration_sec"`
+}
+
 // Blocklist contains the user's current list of blocked users.
 type Blocklist struct {
 	DHash string // TODO is this just a timestamp?

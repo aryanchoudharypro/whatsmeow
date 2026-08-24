@@ -9,6 +9,7 @@ package whatsmeow
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -158,6 +159,52 @@ func (cli *Client) GetContactQRLink(ctx context.Context, revoke bool) (string, e
 }
 
 const mutationUpdateTextStatus = "9152604461510864"
+const queryFetchTextStatusList = "24072923595647473"
+
+// GetTextStatus fetches a user's current About/status text.
+//
+// This uses the same mex query WhatsApp Web's client uses to read the
+// value SetStatusMessage writes. It's necessary because the legacy usync
+// <status/> node (as used by GetUserInfo) is no longer kept in sync once a
+// client updates the status via the newer mutation - it keeps serving
+// whatever value was last written through the old path, indefinitely.
+func (cli *Client) GetTextStatus(ctx context.Context, jid types.JID) (*types.TextStatus, error) {
+	resp, err := cli.sendMexIQ(ctx, queryFetchTextStatusList, map[string]any{
+		"input": map[string]any{"jid": jid.String()},
+	})
+	if err != nil {
+		return nil, err
+	}
+	// sendMexIQ already unwraps the outer {"data": ...} envelope, so this
+	// only needs the inner shape.
+	var parsed struct {
+		TextStatusList []struct {
+			JID                  string                `json:"jid"`
+			Text                 string                `json:"text"`
+			Emoji                *types.SetStatusEmoji `json:"emoji"`
+			LastUpdateTime       string                `json:"last_update_time"`
+			EphemeralDurationSec int                   `json:"ephemeral_duration_sec"`
+		} `json:"xwa2_text_status_list"`
+	}
+	if err = json.Unmarshal(resp, &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse text status response: %w", err)
+	}
+	if len(parsed.TextStatusList) == 0 {
+		return nil, nil
+	}
+	entry := parsed.TextStatusList[0]
+	entryJID, err := types.ParseJID(entry.JID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse jid in text status response: %w", err)
+	}
+	return &types.TextStatus{
+		JID:                  entryJID,
+		Text:                 entry.Text,
+		Emoji:                entry.Emoji,
+		LastUpdateTime:       entry.LastUpdateTime,
+		EphemeralDurationSec: entry.EphemeralDurationSec,
+	}, nil
+}
 
 // SetStatusMessage updates the current user's status text, which is shown in the "About" section in the user profile.
 //

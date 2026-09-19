@@ -249,6 +249,27 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 		return
 	}
 
+	// Removing a contact reaches here as a REMOVE mutation on the "contact"
+	// index. The server still sends a fully decodable record for it (unlike
+	// a bare tombstone), so the index/timestamp are available same as a SET -
+	// only the contact-specific store update and event differ, so handle it
+	// before the blanket SET-only guard below (which still applies to every
+	// other index; a remove for those is intentionally left unhandled).
+	if len(mutation.Index) > 0 && mutation.Index[0] == appstate.IndexContact && mutation.Operation == waServerSync.SyncdMutation_REMOVE {
+		var jid types.JID
+		if len(mutation.Index) > 1 {
+			jid, _ = types.ParseJID(mutation.Index[1])
+		}
+		ts := time.UnixMilli(mutation.Action.GetTimestamp())
+		eventToDispatch = &events.Contact{JID: jid, Timestamp: ts, FromFullSync: fullSync, Removed: true}
+		if cli.Store.Contacts != nil {
+			if err := cli.Store.Contacts.PutContactName(ctx, jid, "", ""); err != nil {
+				cli.Log.Warnf("Failed to clear contact store entry for %s after remove mutation: %v", jid, err)
+			}
+		}
+		return
+	}
+
 	if mutation.Operation != waServerSync.SyncdMutation_SET {
 		return
 	}

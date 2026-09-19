@@ -19,8 +19,9 @@ type Contact struct {
 	JID       types.JID // The contact who was modified.
 	Timestamp time.Time // The time when the modification happened.'
 
-	Action       *waSyncAction.ContactAction // The new contact info.
+	Action       *waSyncAction.ContactAction // The new contact info. Nil if Removed is true.
 	FromFullSync bool                        // Whether the action is emitted because of a fullSync
+	Removed      bool                        // Whether the contact was removed rather than added/edited.
 }
 
 // PushName is emitted when a message is received with a different push name than the previous value cached for the same user.

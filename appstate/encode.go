@@ -396,6 +396,37 @@ func BuildDeleteChat(target types.JID, lastMessageTimestamp time.Time, lastMessa
 	}
 }
 
+// BuildClearChat builds an app state patch for clearing a chat's messages
+// while leaving the chat itself in the list (unlike BuildDeleteChat, which
+// removes the chat entirely). Index shape - ["clearChat", jid,
+// deleteStarred, deleteMedia] - confirmed against WAWebClearChatSync's
+// schema; dispatchAppState already expected this exact 4-part shape
+// (index[3] for deleteMedia) but nothing in this package could build it.
+func BuildClearChat(target types.JID, lastMessageTimestamp time.Time, lastMessageKey *waCommon.MessageKey, deleteStarred, deleteMedia bool) PatchInfo {
+	action := &waSyncAction.ClearChatAction{
+		MessageRange: newMessageRange(lastMessageTimestamp, lastMessageKey),
+	}
+	deleteStarredInt := "0"
+	if deleteStarred {
+		deleteStarredInt = "1"
+	}
+	deleteMediaInt := "0"
+	if deleteMedia {
+		deleteMediaInt = "1"
+	}
+
+	return PatchInfo{
+		Type: WAPatchRegularHigh,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexClearChat, target.String(), deleteStarredInt, deleteMediaInt},
+			Version: 6,
+			Value: &waSyncAction.SyncActionValue{
+				ClearChatAction: action,
+			},
+		}},
+	}
+}
+
 func newMessageRange(lastMessageTimestamp time.Time, lastMessageKey *waCommon.MessageKey) *waSyncAction.SyncActionMessageRange {
 	if lastMessageTimestamp.IsZero() {
 		lastMessageTimestamp = time.Now()

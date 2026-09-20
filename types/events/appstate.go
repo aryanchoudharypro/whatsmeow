@@ -92,6 +92,16 @@ type Archive struct {
 	FromFullSync bool                            // Whether the action is emitted because of a fullSync
 }
 
+// LockChat is emitted when a chat is locked or unlocked (added to or removed
+// from the "locked chats" folder) from another device, e.g. the phone.
+type LockChat struct {
+	JID       types.JID // The chat which was locked or unlocked.
+	Timestamp time.Time // The time when the (un)locking happened.
+
+	Action       *waSyncAction.LockChatAction // The current lock status of the chat.
+	FromFullSync bool                         // Whether the action is emitted because of a fullSync
+}
+
 // MarkChatAsRead is emitted when a whole chat is marked as read or unread from another device.
 type MarkChatAsRead struct {
 	JID       types.JID // The chat which was marked as read or unread.

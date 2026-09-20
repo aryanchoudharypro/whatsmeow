@@ -308,6 +308,15 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 		if cli.Store.ChatSettings != nil {
 			storeUpdateError = cli.Store.ChatSettings.PutArchived(ctx, jid, act.GetArchived())
 		}
+	case appstate.IndexLock:
+		// No store.ChatSettings.PutLocked - unlike mute/pin/archive, nothing
+		// in this store interface currently tracks chat-lock status, so
+		// there's nothing to persist here. Consumers that care (e.g. a
+		// locked-chats UI) get everything they need from the event itself,
+		// same as they always had to build the send side (buildLockChat)
+		// entirely on their own before this event existed at all.
+		act := mutation.Action.GetLockChatAction()
+		eventToDispatch = &events.LockChat{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
 	case appstate.IndexContact:
 		act := mutation.Action.GetContactAction()
 		eventToDispatch = &events.Contact{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}

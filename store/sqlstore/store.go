@@ -483,6 +483,7 @@ const (
 	deleteAppStateMutationMACsQueryPostgres = `DELETE FROM whatsmeow_app_state_mutation_macs WHERE jid=$1 AND name=$2 AND index_mac=ANY($3::bytea[])`
 	deleteAppStateMutationMACsQueryGeneric  = `DELETE FROM whatsmeow_app_state_mutation_macs WHERE jid=$1 AND name=$2 AND index_mac IN `
 	getAppStateMutationMACQuery             = `SELECT value_mac FROM whatsmeow_app_state_mutation_macs WHERE jid=$1 AND name=$2 AND index_mac=$3 ORDER BY version DESC LIMIT 1`
+	deleteAllAppStateMutationMACsQuery      = `DELETE FROM whatsmeow_app_state_mutation_macs WHERE jid=$1 AND name=$2`
 )
 
 func (s *SQLStore) PutAppStateVersion(ctx context.Context, name string, version uint64, hash [128]byte) error {
@@ -578,6 +579,11 @@ func (s *SQLStore) GetAppStateMutationMAC(ctx context.Context, name string, inde
 		err = nil
 	}
 	return
+}
+
+func (s *SQLStore) DeleteAllAppStateMutationMACs(ctx context.Context, name string) error {
+	_, err := s.db.Exec(ctx, deleteAllAppStateMutationMACsQuery, s.JID, name)
+	return err
 }
 
 const (

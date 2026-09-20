@@ -78,6 +78,18 @@ type AppStateStore interface {
 	PutAppStateMutationMACs(ctx context.Context, name string, version uint64, mutations []AppStateMutationMAC) error
 	DeleteAppStateMutationMACs(ctx context.Context, name string, indexMACs [][]byte) error
 	GetAppStateMutationMAC(ctx context.Context, name string, indexMAC []byte) (valueMAC []byte, err error)
+	// DeleteAllAppStateMutationMACs removes every stored mutation MAC for a
+	// collection, unconditionally. DeleteAppStateVersion resets only the
+	// version/hash row - it was never enough on its own to recover from a
+	// mismatching-LTHash/mismatching-snapshot-MAC error, because a snapshot
+	// decode only ever *adds* MACs for what it currently contains (there's
+	// no "previous value" lookup to diff against for a snapshot, so nothing
+	// populates the removal list); any stale entry from before a rebuild -
+	// in particular one from whichever mutation actually caused the
+	// mismatch - is left behind and can make a *later* patch fail the same
+	// way. A full resync needs both cleared together so the snapshot that
+	// follows starts from a genuinely empty baseline.
+	DeleteAllAppStateMutationMACs(ctx context.Context, name string) error
 }
 
 type ContactEntry struct {

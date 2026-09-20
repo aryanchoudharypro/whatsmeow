@@ -51,6 +51,17 @@ func (cli *Client) fetchAppState(ctx context.Context, name appstate.WAPatchName,
 		if err != nil {
 			return nil, fmt.Errorf("failed to reset app state %s version: %w", name, err)
 		}
+		// The version/hash row alone isn't the whole local baseline: the
+		// snapshot this triggers only ever adds mutation MACs for what it
+		// currently contains (see decodeSnapshot - there's no "previous
+		// value" lookup for a snapshot, so nothing populates a removal
+		// list), so any stale entry left over from before this resync -
+		// including whichever one actually caused a mismatching-LTHash
+		// error - survives untouched otherwise, and can make a later patch
+		// fail the exact same way again.
+		if err := cli.Store.AppState.DeleteAllAppStateMutationMACs(ctx, string(name)); err != nil {
+			return nil, fmt.Errorf("failed to reset app state %s mutation MACs: %w", name, err)
+		}
 	}
 	version, hash, err := cli.Store.AppState.GetAppStateVersion(ctx, string(name))
 	if err != nil {

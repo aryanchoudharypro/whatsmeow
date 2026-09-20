@@ -251,8 +251,15 @@ func (proc *Processor) validateSnapshotMAC(ctx context.Context, name WAPatchName
 	snapshotMAC := currentState.generateSnapshotMAC(name, keys.SnapshotMAC)
 	if !hmac.Equal(snapshotMAC, expectedSnapshotMAC) {
 		proc.Log.Warnf("failed to verify patch v%d: %v", currentState.Version, ErrMismatchingLTHash)
-		// Bypass verification failure
-		// err = fmt.Errorf("failed to verify patch v%d: %w", currentState.Version, ErrMismatchingLTHash)
+		// Was bypassed (logged only, err left nil) because this was
+		// rejecting outbound patches too and breaking desktop-triggered
+		// archive/mute/pin from reaching the phone at all. Re-enabled now
+		// that the caller (whantv's handleAppStateSyncError) has real
+		// seed-and-retry recovery for this exact error - bypassing it also
+		// meant that recovery path never ran, and a mismatch here means the
+		// decrypted mutation content can't be trusted, which is worse than
+		// a caught, retried failure.
+		err = fmt.Errorf("failed to verify patch v%d: %w", currentState.Version, ErrMismatchingLTHash)
 	}
 	return
 }

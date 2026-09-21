@@ -7,7 +7,6 @@
 package richresponse
 
 import (
-	"bytes"
 	"encoding/json"
 	"reflect"
 )
@@ -18,8 +17,8 @@ type TextEntity struct {
 }
 
 type textEntityMetaType struct {
-	TextEntity
-	Metadata TypeNameContainer `json:"metadata"`
+	Key      string          `json:"key"`
+	Metadata json.RawMessage `json:"metadata"`
 }
 
 func (te *TextEntity) UnmarshalJSON(data []byte) error {
@@ -27,15 +26,25 @@ func (te *TextEntity) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &metaType); err != nil {
 		return err
 	}
+	te.Key = metaType.Key
 
-	typ, ok := textEntityMetadataTypes[metaType.Metadata.TypeName]
-	if !ok {
-		*te = metaType.TextEntity
-		te.Metadata = UnknownTextEntityMetadata(bytes.Clone(data))
-		return nil
+	// Unmarshaling the concrete metadata type from just its own sub-object,
+	// via the same helper primitive.go/viewmodel.go use, rather than handing
+	// the full outer `data` back to json.Unmarshal(data, te)/(data, &te):
+	// either of those would find that *TextEntity (or **TextEntity, which
+	// json.Unmarshal dereferences down to it too) still implements
+	// Unmarshaler and call straight back into this method with the same
+	// bytes - unbounded recursion crashing the process with a stack
+	// overflow, which is what every metadata type in textEntityMetadataTypes
+	// used to do (an unrecognized type is the one case that never recursed,
+	// since unmarshalWithTypeName returns UnknownTextEntityMetadata for it
+	// without going through this method again).
+	val, err := unmarshalWithTypeName[UnknownTextEntityMetadata](metaType.Metadata, textEntityMetadataTypes)
+	if err != nil {
+		return err
 	}
-	te.Metadata = reflect.New(typ).Interface().(TextEntityMetadata)
-	return json.Unmarshal(data, &te)
+	te.Metadata = val.(TextEntityMetadata)
+	return nil
 }
 
 type TextEntityMetadata interface {

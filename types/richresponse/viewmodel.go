@@ -61,6 +61,12 @@ type GenAISingleLayoutViewModel struct {
 }
 
 func (vm *GenAISingleLayoutViewModel) String() string {
+	if vm.Primitive.Value == nil {
+		// Happens for a streamed GenAI reply's intermediate ("inner") edit
+		// frames, whose view model can carry a section with no primitive
+		// yet - only the final frame is guaranteed to have one.
+		return ""
+	}
 	return vm.Primitive.Value.String()
 }
 
@@ -74,6 +80,9 @@ type MultiLayoutViewModel struct {
 
 func (vm *MultiLayoutViewModel) String() string {
 	return strings.Join(exslices.CastFunc(vm.Primitives, func(from PrimitiveContainer) string {
+		if from.Value == nil {
+			return ""
+		}
 		return from.Value.String()
 	}), "\n")
 }

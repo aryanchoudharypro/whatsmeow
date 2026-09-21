@@ -51,6 +51,23 @@ type CallLogSync struct {
 	FromFullSync bool                        // Whether the action is emitted because of a fullSync.
 }
 
+// QuickReply is emitted when a quick reply (a saved shortcut and its canned
+// message) is added, edited or deleted from another device.
+type QuickReply struct {
+	Shortcut     string                         // The shortcut the quick reply is keyed by, from the mutation index.
+	Timestamp    time.Time                      // The time when the modification happened.
+	Action       *waSyncAction.QuickReplyAction // The new quick reply. Check Action.GetDeleted() for a removal.
+	FromFullSync bool                           // Whether the action is emitted because of a fullSync.
+}
+
+// DisableLinkPreviews is emitted when the "remove link previews" privacy
+// setting is changed from another device.
+type DisableLinkPreviews struct {
+	Disabled     bool      // Whether link previews are now switched off.
+	Timestamp    time.Time // The time when the modification happened.
+	FromFullSync bool      // Whether the action is emitted because of a fullSync.
+}
+
 // PushName is emitted when a message is received with a different push name than the previous value cached for the same user.
 type PushName struct {
 	JID         types.JID // The user whose push name changed.

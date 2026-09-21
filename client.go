@@ -131,7 +131,7 @@ type Client struct {
 	incomingRetryRequestCounter     map[incomingRetryKey]int
 	incomingRetryRequestCounterLock sync.Mutex
 
-	appStateKeyRequests     map[string]time.Time
+	appStateKeyRequests     map[string]appStateKeyRequest
 	appStateKeyRequestsLock sync.RWMutex
 
 	messageSendLock sync.Mutex
@@ -284,7 +284,7 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 		recentMessagesMap:      make(map[recentMessageKey]RecentMessage, recentMessagesSize),
 		sessionRecreateHistory: make(map[types.JID]time.Time),
 		GetMessageForRetry:     func(requester, to types.JID, id types.MessageID) *waE2E.Message { return nil },
-		appStateKeyRequests:    make(map[string]time.Time),
+		appStateKeyRequests:    make(map[string]appStateKeyRequest),
 
 		pendingPhoneRerequests: make(map[types.MessageID]context.CancelFunc),
 

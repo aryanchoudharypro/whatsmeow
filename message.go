@@ -828,7 +828,10 @@ func (cli *Client) handleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.A
 	onlyResyncIfNotSynced := true
 
 	cli.Log.Debugf("Got %d new app state keys", len(keys.GetKeys()))
-	cli.appStateKeyRequestsLock.RLock()
+	// Write lock: a delivered key clears its request stamp, so a key that goes
+	// missing again later is asked for straight away rather than inheriting a
+	// backoff earned by an unrelated earlier outage.
+	cli.appStateKeyRequestsLock.Lock()
 	for _, key := range keys.GetKeys() {
 		marshaledFingerprint, err := proto.Marshal(key.GetKeyData().GetFingerprint())
 		if err != nil {
@@ -848,9 +851,10 @@ func (cli *Client) handleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.A
 			cli.Log.Errorf("Failed to store app state sync key %X: %v", key.GetKeyID().GetKeyID(), err)
 			continue
 		}
+		delete(cli.appStateKeyRequests, hex.EncodeToString(key.GetKeyID().GetKeyID()))
 		cli.Log.Debugf("Received app state sync key %X (ts: %d)", key.GetKeyID().GetKeyID(), key.GetKeyData().GetTimestamp())
 	}
-	cli.appStateKeyRequestsLock.RUnlock()
+	cli.appStateKeyRequestsLock.Unlock()
 
 	for _, name := range appstate.AllPatchNames {
 		err := cli.FetchAppState(ctx, name, false, onlyResyncIfNotSynced)

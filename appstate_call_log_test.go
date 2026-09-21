@@ -144,3 +144,53 @@ func TestCallLogMutationSkipsUnreadableShapes(t *testing.T) {
 		t.Errorf("a missing record must dispatch nothing, got %T", evt)
 	}
 }
+
+// Both of these indexes were declared and then matched by nothing, so their
+// mutations fell out of the dispatch switch with no event and no log line.
+func TestQuickReplyMutationDispatchesEvent(t *testing.T) {
+	mutation := appstate.Mutation{
+		Operation: waServerSync.SyncdMutation_SET,
+		Index:     []string{appstate.IndexQuickReply, "/hello"},
+		Action: &waSyncAction.SyncActionValue{
+			Timestamp: proto.Int64(1_700_000_000_000),
+			QuickReplyAction: &waSyncAction.QuickReplyAction{
+				Shortcut: proto.String("/hello"),
+				Message:  proto.String("Hi, thanks for getting in touch."),
+			},
+		},
+	}
+	evt, ok := dispatchCallLog(t, mutation).(*events.QuickReply)
+	if !ok {
+		t.Fatal("quick_reply mutation dispatched no QuickReply event")
+	}
+	if evt.Shortcut != "/hello" {
+		t.Errorf("Shortcut = %q, want the index's /hello", evt.Shortcut)
+	}
+	if evt.Action.GetMessage() != "Hi, thanks for getting in touch." {
+		t.Errorf("Action not carried through: %q", evt.Action.GetMessage())
+	}
+}
+
+func TestDisableLinkPreviewsMutationDispatchesEvent(t *testing.T) {
+	build := func(disabled bool) appstate.Mutation {
+		return appstate.Mutation{
+			Operation: waServerSync.SyncdMutation_SET,
+			Index:     []string{appstate.IndexSettingDisableLinkPreviews},
+			Action: &waSyncAction.SyncActionValue{
+				Timestamp: proto.Int64(1_700_000_000_000),
+				PrivacySettingDisableLinkPreviewsAction: &waSyncAction.PrivacySettingDisableLinkPreviewsAction{
+					IsPreviewsDisabled: proto.Bool(disabled),
+				},
+			},
+		}
+	}
+	for _, disabled := range []bool{true, false} {
+		evt, ok := dispatchCallLog(t, build(disabled)).(*events.DisableLinkPreviews)
+		if !ok {
+			t.Fatalf("setting_disableLinkPreviews(%v) dispatched no event", disabled)
+		}
+		if evt.Disabled != disabled {
+			t.Errorf("Disabled = %v, want %v", evt.Disabled, disabled)
+		}
+	}
+}

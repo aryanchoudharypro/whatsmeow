@@ -327,6 +327,25 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			Record:         record,
 			FromFullSync:   fullSync,
 		}
+	case appstate.IndexQuickReply:
+		// The shortcut is the index's second part, and it is what identifies the
+		// quick reply: the action itself repeats it only when it is being set.
+		shortcut := ""
+		if len(mutation.Index) > 1 {
+			shortcut = mutation.Index[1]
+		}
+		eventToDispatch = &events.QuickReply{
+			Shortcut:     shortcut,
+			Timestamp:    ts,
+			Action:       mutation.Action.GetQuickReplyAction(),
+			FromFullSync: fullSync,
+		}
+	case appstate.IndexSettingDisableLinkPreviews:
+		eventToDispatch = &events.DisableLinkPreviews{
+			Disabled:     mutation.Action.GetPrivacySettingDisableLinkPreviewsAction().GetIsPreviewsDisabled(),
+			Timestamp:    ts,
+			FromFullSync: fullSync,
+		}
 	case appstate.IndexMute:
 		act := mutation.Action.GetMuteAction()
 		eventToDispatch = &events.Mute{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
@@ -557,6 +576,44 @@ func (cli *Client) fetchAppStatePatches(ctx context.Context, name appstate.WAPat
 	return appstate.ParsePatchList(ctx, &collection, cli.downloadExternalAppStateBlob)
 }
 
+// appStateKeyRequest is one outstanding ask for a missing app-state key.
+type appStateKeyRequest struct {
+	lastRequest time.Time
+	attempts    int
+}
+
+// appStateKeyRetryBackoff is how long to wait before asking again for a key
+// that has not arrived. A key request is answered by another of this account's
+// devices, so the usual reason for silence is that they were all asleep or
+// offline when we asked — a condition that clears on its own in seconds or
+// minutes, not in a day.
+//
+// A flat 24-hour floor was the whole retry policy. Nothing else asks: the
+// collection whose patch needed that key cannot advance, so every mute, pin,
+// archive and mark-as-read written to it fails until the key turns up, and a
+// single lost request stalled all of that for a day.
+var appStateKeyRetryBackoff = []time.Duration{
+	30 * time.Second,
+	2 * time.Minute,
+	10 * time.Minute,
+	30 * time.Minute,
+	2 * time.Hour,
+}
+
+// appStateKeyRetryFloor is the interval after the backoff is exhausted. At that
+// point the peer is not merely asleep and the passive pace is right again.
+const appStateKeyRetryFloor = 24 * time.Hour
+
+func appStateKeyRetryDelay(attempts int) time.Duration {
+	if attempts <= 0 {
+		return 0
+	}
+	if attempts <= len(appStateKeyRetryBackoff) {
+		return appStateKeyRetryBackoff[attempts-1]
+	}
+	return appStateKeyRetryFloor
+}
+
 func (cli *Client) requestMissingAppStateKeys(ctx context.Context, patches *appstate.PatchList) {
 	cli.appStateKeyRequestsLock.Lock()
 	rawKeyIDs := cli.appStateProc.GetMissingKeyIDs(ctx, patches)
@@ -564,11 +621,12 @@ func (cli *Client) requestMissingAppStateKeys(ctx context.Context, patches *apps
 	now := time.Now()
 	for _, keyID := range rawKeyIDs {
 		stringKeyID := hex.EncodeToString(keyID)
-		lastRequestTime := cli.appStateKeyRequests[stringKeyID]
-		if lastRequestTime.IsZero() || lastRequestTime.Add(24*time.Hour).Before(now) {
-			cli.appStateKeyRequests[stringKeyID] = now
-			filteredKeyIDs = append(filteredKeyIDs, keyID)
+		req := cli.appStateKeyRequests[stringKeyID]
+		if !req.lastRequest.IsZero() && req.lastRequest.Add(appStateKeyRetryDelay(req.attempts)).After(now) {
+			continue
 		}
+		cli.appStateKeyRequests[stringKeyID] = appStateKeyRequest{lastRequest: now, attempts: req.attempts + 1}
+		filteredKeyIDs = append(filteredKeyIDs, keyID)
 	}
 	cli.appStateKeyRequestsLock.Unlock()
 	cli.requestAppStateKeys(ctx, filteredKeyIDs)

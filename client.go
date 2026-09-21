@@ -1138,3 +1138,24 @@ func (cli *Client) sendUnifiedSession() {
 		cli.Log.Debugf("Failed to send unified_session telemetry: %v", err)
 	}
 }
+
+// isOwnIdentity reports whether jid addresses this account, keyed on the
+// ADDRESSING MODE rather than on the user alone. A comparison that ignores the
+// server would let a peer LID whose digits happen to spell our phone number read
+// as us, so a phone-number JID is checked against our own PN and a LID against
+// our own LID, never across.
+func (cli *Client) isOwnIdentity(jid types.JID) bool {
+	if cli == nil || jid.IsEmpty() {
+		return false
+	}
+	switch jid.Server {
+	case types.HiddenUserServer:
+		own := cli.getOwnLID()
+		return !own.IsEmpty() && own.User == jid.User
+	case types.DefaultUserServer:
+		own := cli.getOwnID()
+		return !own.IsEmpty() && own.User == jid.User
+	default:
+		return false
+	}
+}

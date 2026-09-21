@@ -294,12 +294,11 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 	var storeUpdateError error
 	switch mutation.Index[0] {
 	case appstate.IndexCallLog:
-		// The index is ["call_log", callCreatorJID, callID, fromMe], which carries
-		// what the record is allowed to leave out: WA Web builds it as
+		// The index is ["call_log", callCreatorJID, callID, fromMe]. Only the
+		// middle two are read: WA Web builds it as
 		// JSON.stringify([action, ...indexArgs]) and fills callCreatorJID either
-		// way, while the record's own field is optional and unset for calls it got
-		// none for.
-		if len(mutation.Index) < 4 {
+		// way, while the record's own field is optional.
+		if len(mutation.Index) < 3 {
 			cli.Log.Warnf("Skipping call_log mutation with a %d-part index", len(mutation.Index))
 			return
 		}
@@ -308,27 +307,22 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			cli.Log.Warnf("Skipping call_log mutation: missing call id in index")
 			return
 		}
-		// WA Web writes "1"/"0" (m = n.fromMe ? "1" : "0"). Anything else is a
-		// shape we cannot read, and guessing would mislabel the call.
-		var fromMe bool
-		switch mutation.Index[3] {
-		case "1":
-			fromMe = true
-		case "0":
-			fromMe = false
-		default:
-			cli.Log.Warnf("Skipping call_log mutation %s: unreadable fromMe %q in index", callID, mutation.Index[3])
-			return
-		}
 		record := mutation.Action.GetCallLogAction().GetCallLogRecord()
 		if record == nil {
 			cli.Log.Warnf("Skipping call_log mutation %s: missing record in action value", callID)
 			return
 		}
+		// Direction comes from the CREATOR, not from either direction field.
+		// Both the index's fourth part and record.isIncoming are written
+		// differently depending on which client authored the mutation, so no
+		// fixed reading of either is right for all of them — and app state fans a
+		// companion's mutations out to every device, so records from both writers
+		// reach us. WA Web's reader never looks at either one: it resolves the
+		// creator and asks isMeAccount.
 		eventToDispatch = &events.CallLogSync{
 			CallCreatorJID: jid,
 			CallID:         callID,
-			FromMe:         fromMe,
+			FromMe:         cli.isOwnIdentity(jid),
 			Timestamp:      ts,
 			Record:         record,
 			FromFullSync:   fullSync,

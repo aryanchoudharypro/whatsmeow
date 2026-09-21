@@ -34,11 +34,16 @@ type CallLogSync struct {
 	CallCreatorJID types.JID // Who the call was with. From the mutation index, which is filled in even when the record's own field is not.
 	CallID         string    // The call's id, from the mutation index.
 
-	// FromMe reports that THIS ACCOUNT placed the call, and is the field to
-	// trust. It comes from the mutation index. Do not read it off
-	// Record.IsIncoming: WA Web writes that field as `isIncoming: n.fromMe`, so
-	// its name is the opposite of its meaning and taking it at face value files
-	// every call backwards.
+	// FromMe reports that THIS ACCOUNT placed the call. It is derived from
+	// CallCreatorJID, the way the official client's reader does it, and not from
+	// either direction field on the wire.
+	//
+	// Neither of those is safe. The mutation index's fourth part and
+	// Record.IsIncoming are both written from the author's own local `fromMe`,
+	// but different clients write them differently, so no fixed reading of either
+	// is right for all of them — and app state fans a companion's mutations out to
+	// every device, so records from every writer arrive here. Reading either one
+	// files calls placed on the handset backwards.
 	FromMe bool
 
 	Timestamp    time.Time                   // The mutation's time, which is metadata. The call's own time is Record.StartTime.

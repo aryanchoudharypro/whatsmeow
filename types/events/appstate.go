@@ -24,6 +24,28 @@ type Contact struct {
 	Removed      bool                        // Whether the contact was removed rather than added/edited.
 }
 
+// CallLogSync is emitted for a decoded `call_log` app-state record.
+//
+// This is the only channel that carries a call placed or received on the primary
+// device: IncomingCall, CallTerminate and friends all originate in a stanza on
+// this device's own socket, and a call the phone handles puts nothing there, so
+// without this the phone's call history is structurally unreachable.
+type CallLogSync struct {
+	CallCreatorJID types.JID // Who the call was with. From the mutation index, which is filled in even when the record's own field is not.
+	CallID         string    // The call's id, from the mutation index.
+
+	// FromMe reports that THIS ACCOUNT placed the call, and is the field to
+	// trust. It comes from the mutation index. Do not read it off
+	// Record.IsIncoming: WA Web writes that field as `isIncoming: n.fromMe`, so
+	// its name is the opposite of its meaning and taking it at face value files
+	// every call backwards.
+	FromMe bool
+
+	Timestamp    time.Time                   // The mutation's time, which is metadata. The call's own time is Record.StartTime.
+	Record       *waSyncAction.CallLogRecord // Duration, result, video flag and the rest.
+	FromFullSync bool                        // Whether the action is emitted because of a fullSync.
+}
+
 // PushName is emitted when a message is received with a different push name than the previous value cached for the same user.
 type PushName struct {
 	JID         types.JID // The user whose push name changed.

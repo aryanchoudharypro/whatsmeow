@@ -293,6 +293,46 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 
 	var storeUpdateError error
 	switch mutation.Index[0] {
+	case appstate.IndexCallLog:
+		// The index is ["call_log", callCreatorJID, callID, fromMe], which carries
+		// what the record is allowed to leave out: WA Web builds it as
+		// JSON.stringify([action, ...indexArgs]) and fills callCreatorJID either
+		// way, while the record's own field is optional and unset for calls it got
+		// none for.
+		if len(mutation.Index) < 4 {
+			cli.Log.Warnf("Skipping call_log mutation with a %d-part index", len(mutation.Index))
+			return
+		}
+		callID := mutation.Index[2]
+		if callID == "" {
+			cli.Log.Warnf("Skipping call_log mutation: missing call id in index")
+			return
+		}
+		// WA Web writes "1"/"0" (m = n.fromMe ? "1" : "0"). Anything else is a
+		// shape we cannot read, and guessing would mislabel the call.
+		var fromMe bool
+		switch mutation.Index[3] {
+		case "1":
+			fromMe = true
+		case "0":
+			fromMe = false
+		default:
+			cli.Log.Warnf("Skipping call_log mutation %s: unreadable fromMe %q in index", callID, mutation.Index[3])
+			return
+		}
+		record := mutation.Action.GetCallLogAction().GetCallLogRecord()
+		if record == nil {
+			cli.Log.Warnf("Skipping call_log mutation %s: missing record in action value", callID)
+			return
+		}
+		eventToDispatch = &events.CallLogSync{
+			CallCreatorJID: jid,
+			CallID:         callID,
+			FromMe:         fromMe,
+			Timestamp:      ts,
+			Record:         record,
+			FromFullSync:   fullSync,
+		}
 	case appstate.IndexMute:
 		act := mutation.Action.GetMuteAction()
 		eventToDispatch = &events.Mute{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}

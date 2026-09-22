@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"time"
 
@@ -833,6 +834,12 @@ func (cli *Client) handleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.A
 	// backoff earned by an unrelated earlier outage.
 	cli.appStateKeyRequestsLock.Lock()
 	for _, key := range keys.GetKeys() {
+		if len(key.GetKeyData().GetKeyData()) == 0 {
+			// An orphan: the sharer doesn't have this key either. Storing it
+			// would save an empty key that then fails every decryption.
+			cli.Log.Debugf("Key share lists app state key %X as an orphan", key.GetKeyID().GetKeyID())
+			continue
+		}
 		marshaledFingerprint, err := proto.Marshal(key.GetKeyData().GetFingerprint())
 		if err != nil {
 			cli.Log.Errorf("Failed to marshal fingerprint of app state sync key %X", key.GetKeyID().GetKeyID())
@@ -861,6 +868,69 @@ func (cli *Client) handleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.A
 		if err != nil {
 			cli.Log.Errorf("Failed to do initial fetch of app state %s: %v", name, err)
 		}
+	}
+}
+
+// handleAppStateSyncKeyRequest answers another of our own devices asking for
+// app state sync keys it is missing, the way WA Web does
+// (WAWebKeyManagementHandleKeyRequestApi -> WAWebKeyManagementSendKeyShareApi):
+// every requested key we hold is shared back, and every one we don't comes back
+// as an "orphan" entry - the key ID with no key data - so the requester learns
+// this device can't help with it instead of waiting on it. The share goes only
+// to the device that asked, addressed as our own user with that device's ID.
+//
+// The requester's Signal session with us necessarily exists already: the
+// request itself only reached us encrypted over it.
+func (cli *Client) handleAppStateSyncKeyRequest(ctx context.Context, requester types.JID, req *waE2E.AppStateSyncKeyRequest) {
+	ownID := cli.getOwnID()
+	if ownID.IsEmpty() {
+		return
+	}
+	var keys []*waE2E.AppStateSyncKey
+	var found, orphans []string
+	for _, reqKey := range req.GetKeyIDs() {
+		keyID := reqKey.GetKeyID()
+		if len(keyID) == 0 {
+			continue
+		}
+		stored, err := cli.Store.AppStateKeys.GetAppStateSyncKey(ctx, keyID)
+		if err != nil {
+			cli.Log.Warnf("Failed to look up app state key %X for key request: %v", keyID, err)
+		}
+		var fingerprint waE2E.AppStateSyncKeyFingerprint
+		if stored != nil && len(stored.Data) > 0 && proto.Unmarshal(stored.Fingerprint, &fingerprint) == nil {
+			keys = append(keys, &waE2E.AppStateSyncKey{
+				KeyID: &waE2E.AppStateSyncKeyId{KeyID: keyID},
+				KeyData: &waE2E.AppStateSyncKeyData{
+					KeyData:     stored.Data,
+					Fingerprint: &fingerprint,
+					Timestamp:   proto.Int64(stored.Timestamp),
+				},
+			})
+			found = append(found, hex.EncodeToString(keyID))
+		} else {
+			orphans = append(orphans, hex.EncodeToString(keyID))
+		}
+	}
+	// WA Web appends the orphans after every key it did find.
+	for _, reqKey := range req.GetKeyIDs() {
+		if keyID := reqKey.GetKeyID(); len(keyID) > 0 && slices.Contains(orphans, hex.EncodeToString(keyID)) {
+			keys = append(keys, &waE2E.AppStateSyncKey{KeyID: &waE2E.AppStateSyncKeyId{KeyID: keyID}})
+		}
+	}
+	if len(keys) == 0 {
+		return
+	}
+	target := types.JID{User: ownID.User, Server: ownID.Server, Device: requester.Device}
+	cli.Log.Infof("Answering app state key request from device %d: keys=%v orphans=%v", requester.Device, found, orphans)
+	msg := &waE2E.Message{
+		ProtocolMessage: &waE2E.ProtocolMessage{
+			Type:                 waE2E.ProtocolMessage_APP_STATE_SYNC_KEY_SHARE.Enum(),
+			AppStateSyncKeyShare: &waE2E.AppStateSyncKeyShare{Keys: keys},
+		},
+	}
+	if _, err := cli.SendMessage(ctx, target, msg, SendRequestExtra{Peer: true}); err != nil {
+		cli.Log.Warnf("Failed to send app state key share to device %d: %v", requester.Device, err)
 	}
 }
 
@@ -926,6 +996,12 @@ func (cli *Client) handleProtocolMessage(ctx context.Context, info *types.Messag
 
 	if protoMsg.GetAppStateSyncKeyShare() != nil {
 		go cli.handleAppStateSyncKeyShare(context.WithoutCancel(ctx), protoMsg.AppStateSyncKeyShare)
+	}
+
+	// Only reachable for our own account (the IsFromMe gate above), matching
+	// WA Web's WAWebKeyManagementHandleKeyRequestApi isMeAccount check.
+	if protoMsg.GetAppStateSyncKeyRequest() != nil && info.Sender.Device != cli.getOwnID().Device {
+		go cli.handleAppStateSyncKeyRequest(context.WithoutCancel(ctx), info.Sender, protoMsg.AppStateSyncKeyRequest)
 	}
 
 	if info.Category == "peer" {

@@ -85,16 +85,12 @@ func (cli *Client) handleIB(ctx context.Context, node *waBinary.Node) {
 				Receipts:       ag.Int("receipt"),
 			})
 		case "offline":
+			cli.offlineSyncDone.Store(true)
 			cli.dispatchEvent(&events.OfflineSyncCompleted{
 				Count: ag.Int("count"),
 			})
 		case "dirty":
-			//ts := ag.UnixTime("timestamp")
-			//typ := ag.String("type") // account_sync
-			//go func() {
-			//	err := cli.MarkNotDirty(ctx, typ, ts)
-			//	zerolog.Ctx(ctx).Debug().Err(err).Msg("Marked dirty item as clean")
-			//}()
+			go cli.handleDirtyBit(child.AttrGetter().OptionalString("type"), child.AttrGetter().OptionalString("timestamp"))
 		}
 	}
 }
@@ -161,6 +157,7 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 		return
 	}
 	cli.Log.Infof("Successfully authenticated")
+	cli.offlineSyncDone.Store(false)
 	cli.LastSuccessfulConnect = time.Now()
 	cli.AutoReconnectErrors = 0
 	cli.isLoggedIn.Store(true)

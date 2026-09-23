@@ -103,6 +103,50 @@ func (int *DangerousInternalClient) HandleCallEvent(ctx context.Context, node *w
 	int.c.handleCallEvent(ctx, node)
 }
 
+func (int *DangerousInternalClient) OnCallOffer(ctx context.Context, child *waBinary.Node, meta types.BasicCallMeta, remote types.CallRemoteMeta) {
+	int.c.onCallOffer(ctx, child, meta, remote)
+}
+
+func (int *DangerousInternalClient) AcceptInboundOffer(ctx context.Context, child *waBinary.Node, meta types.BasicCallMeta, remote types.CallRemoteMeta, callKey []byte, group ...*types.GroupCallUpdate) *callState {
+	return int.c.acceptInboundOffer(ctx, child, meta, remote, callKey, group...)
+}
+
+func (int *DangerousInternalClient) ApplyVoipSettingsCodec(cs *callState, node *waBinary.Node, callID string) {
+	int.c.applyVoipSettingsCodec(cs, node, callID)
+}
+
+func (int *DangerousInternalClient) OnRelayLatency(ctx context.Context, meta types.BasicCallMeta, child *waBinary.Node) {
+	int.c.onRelayLatency(ctx, meta, child)
+}
+
+func (int *DangerousInternalClient) OnCallTerminate(child *waBinary.Node, meta types.BasicCallMeta, reason string) {
+	int.c.onCallTerminate(child, meta, reason)
+}
+
+func (int *DangerousInternalClient) OnCallReject(child *waBinary.Node, meta types.BasicCallMeta) {
+	int.c.onCallReject(child, meta)
+}
+
+func (int *DangerousInternalClient) OnCallMuteV2(ctx context.Context, meta types.BasicCallMeta, mv *waBinary.AttrUtility) {
+	int.c.onCallMuteV2(ctx, meta, mv)
+}
+
+func (int *DangerousInternalClient) MarkCallConnected(callID string, expected *callState) bool {
+	return int.c.markCallConnected(callID, expected)
+}
+
+func (int *DangerousInternalClient) CaptureCallRelay(cs *callState, node *waBinary.Node) {
+	int.c.captureCallRelay(cs, node)
+}
+
+func (int *DangerousInternalClient) MaybeEmitMediaReady(cs *callState) {
+	int.c.maybeEmitMediaReady(cs)
+}
+
+func (int *DangerousInternalClient) OnCallAccept(meta types.BasicCallMeta, remote types.CallRemoteMeta, child *waBinary.Node) {
+	int.c.onCallAccept(meta, remote, child)
+}
+
 func (int *DangerousInternalClient) SetTransport(transport *http.Transport, opt SetProxyOptions) {
 	int.c.setTransport(transport, opt)
 }
@@ -189,6 +233,10 @@ func (int *DangerousInternalClient) GetUnifiedSessionID() string {
 
 func (int *DangerousInternalClient) SendUnifiedSession() {
 	int.c.sendUnifiedSession()
+}
+
+func (int *DangerousInternalClient) IsOwnIdentity(jid types.JID) bool {
+	return int.c.isOwnIdentity(jid)
 }
 
 func (int *DangerousInternalClient) HandleStreamError(ctx context.Context, node *waBinary.Node) {
@@ -279,7 +327,7 @@ func (int *DangerousInternalClient) ParseGroupCreate(parentNode, node *waBinary.
 	return int.c.parseGroupCreate(parentNode, node)
 }
 
-func (int *DangerousInternalClient) ParseGroupChange(node *waBinary.Node) (*events.GroupInfo, []store.LIDMapping, error) {
+func (int *DangerousInternalClient) ParseGroupChange(node *waBinary.Node) (*events.GroupInfo, []store.LIDMapping, []store.RedactedPhoneEntry, error) {
 	return int.c.parseGroupChange(node)
 }
 
@@ -289,6 +337,22 @@ func (int *DangerousInternalClient) UpdateGroupParticipantCache(evt *events.Grou
 
 func (int *DangerousInternalClient) ParseGroupNotification(node *waBinary.Node) (any, []store.LIDMapping, []store.RedactedPhoneEntry, error) {
 	return int.c.parseGroupNotification(node)
+}
+
+func (int *DangerousInternalClient) HandleGroupsDirty(node *waBinary.Node) *events.GroupsDirty {
+	return int.c.handleGroupsDirty(node)
+}
+
+func (int *DangerousInternalClient) RotateGroupSenderKey(ctx context.Context, group types.JID) {
+	int.c.rotateGroupSenderKey(ctx, group)
+}
+
+func (int *DangerousInternalClient) AfterGroupChange(ctx context.Context, evt *events.GroupInfo) {
+	int.c.afterGroupChange(ctx, evt)
+}
+
+func (int *DangerousInternalClient) IsOwnJID(jid types.JID) bool {
+	return int.c.isOwnJID(jid)
 }
 
 func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (chan *waBinary.Node, error) {
@@ -377,6 +441,10 @@ func (int *DangerousInternalClient) HandleHistorySyncNotificationLoop() {
 
 func (int *DangerousInternalClient) HandleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.AppStateSyncKeyShare) {
 	int.c.handleAppStateSyncKeyShare(ctx, keys)
+}
+
+func (int *DangerousInternalClient) HandleAppStateSyncKeyRequest(ctx context.Context, requester types.JID, req *waE2E.AppStateSyncKeyRequest) {
+	int.c.handleAppStateSyncKeyRequest(ctx, requester, req)
 }
 
 func (int *DangerousInternalClient) HandlePlaceholderResendResponse(msg *waE2E.PeerDataOperationRequestResponseMessage) (ok bool) {
@@ -509,6 +577,10 @@ func (int *DangerousInternalClient) HandleIQ(ctx context.Context, node *waBinary
 
 func (int *DangerousInternalClient) HandlePairDevice(ctx context.Context, node *waBinary.Node) {
 	int.c.handlePairDevice(ctx, node)
+}
+
+func (int *DangerousInternalClient) RotateADVSecret(ctx context.Context) {
+	int.c.rotateADVSecret(ctx)
 }
 
 func (int *DangerousInternalClient) GetQRClientType() PairClientType {

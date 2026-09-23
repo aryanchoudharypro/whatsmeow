@@ -11,6 +11,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	groupRecord "go.mau.fi/libsignal/groups/state/record"
+	"go.mau.fi/libsignal/protocol"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
@@ -44,8 +50,13 @@ type ReqCreateGroup struct {
 	// Set IsParent to true to create a community instead of a normal group.
 	// When creating a community, the linked announcement group will be created automatically by the server.
 	types.GroupParent
+	// Community only: also create a general chat that every member joins.
+	CreateGeneralChat bool
 	// Set LinkedParentJID to create a group inside a community.
 	types.GroupLinkedParent
+	// Community group only: keep the group out of the community's group list
+	// for people who aren't in it. This can't be changed after creation.
+	IsHiddenGroup bool
 }
 
 // CreateGroup creates a group on WhatsApp with the given name and participants.
@@ -96,11 +107,20 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 				"default_membership_approval_mode": req.DefaultMembershipApprovalMode,
 			},
 		})
+		if req.AllowNonAdminSubGroupCreation {
+			participantNodes = append(participantNodes, waBinary.Node{Tag: "allow_non_admin_sub_group_creation"})
+		}
+		if req.CreateGeneralChat {
+			participantNodes = append(participantNodes, waBinary.Node{Tag: "create_general_chat"})
+		}
 	} else if !req.LinkedParentJID.IsEmpty() {
 		participantNodes = append(participantNodes, waBinary.Node{
 			Tag:   "linked_parent",
 			Attrs: waBinary.Attrs{"jid": req.LinkedParentJID},
 		})
+	}
+	if req.IsHiddenGroup {
+		participantNodes = append(participantNodes, waBinary.Node{Tag: "hidden_group"})
 	}
 	if req.IsLocked {
 		participantNodes = append(participantNodes, waBinary.Node{Tag: "locked"})
@@ -145,7 +165,7 @@ func (cli *Client) CreateGroup(ctx context.Context, req ReqCreateGroup) (*types.
 	if err != nil {
 		return nil, err
 	}
-	groupNode, ok := resp.GetOptionalChildByTag("group")
+	groupNode, ok := groupOrCommunityChild(resp)
 	if !ok {
 		return nil, &ElementMissingError{Tag: "group", In: "response to create group query"}
 	}
@@ -181,6 +201,155 @@ func (cli *Client) LinkGroup(ctx context.Context, parent, child types.JID) error
 		}},
 	})
 	return err
+}
+
+// ReqLinkSubGroup is one group to link into a community with LinkSubGroups.
+type ReqLinkSubGroup struct {
+	JID types.JID
+	// Hidden keeps the group out of the community's group list for people
+	// who aren't in it. This can't be changed after linking.
+	Hidden bool
+}
+
+// LinkSubGroups links several existing groups into a community in one
+// request, reporting each group's outcome.
+func (cli *Client) LinkSubGroups(ctx context.Context, parent types.JID, groups []ReqLinkSubGroup) ([]types.GroupLinkResult, error) {
+	groupNodes := make([]waBinary.Node, len(groups))
+	for i, group := range groups {
+		groupNodes[i] = waBinary.Node{Tag: "group", Attrs: waBinary.Attrs{"jid": group.JID}}
+		if group.Hidden {
+			groupNodes[i].Content = []waBinary.Node{{Tag: "hidden_group"}}
+		}
+	}
+	resp, err := cli.sendGroupIQ(ctx, iqSet, parent, waBinary.Node{
+		Tag: "links",
+		Content: []waBinary.Node{{
+			Tag:     "link",
+			Attrs:   waBinary.Attrs{"link_type": string(types.GroupLinkChangeTypeSub)},
+			Content: groupNodes,
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	links, ok := resp.GetOptionalChildByTag("links", "link")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "link", In: "response to link groups query"}
+	}
+	return parseGroupLinkResults(&links), nil
+}
+
+// UnlinkSubGroups removes several groups from a community in one request.
+// With removeOrphanMembers, people who are only in the community through
+// those groups are removed from the community too.
+func (cli *Client) UnlinkSubGroups(ctx context.Context, parent types.JID, children []types.JID, removeOrphanMembers bool) ([]types.GroupLinkResult, error) {
+	groupNodes := make([]waBinary.Node, len(children))
+	for i, child := range children {
+		attrs := waBinary.Attrs{"jid": child}
+		if removeOrphanMembers {
+			attrs["remove_orphaned_members"] = "true"
+		}
+		groupNodes[i] = waBinary.Node{Tag: "group", Attrs: attrs}
+	}
+	resp, err := cli.sendGroupIQ(ctx, iqSet, parent, waBinary.Node{
+		Tag:     "unlink",
+		Attrs:   waBinary.Attrs{"unlink_type": string(types.GroupLinkChangeTypeSub)},
+		Content: groupNodes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	unlink, ok := resp.GetOptionalChildByTag("unlink")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "unlink", In: "response to unlink groups query"}
+	}
+	return parseGroupLinkResults(&unlink), nil
+}
+
+func parseGroupLinkResults(node *waBinary.Node) []types.GroupLinkResult {
+	var results []types.GroupLinkResult
+	for _, child := range node.GetChildrenByTag("group") {
+		ag := child.AttrGetter()
+		results = append(results, types.GroupLinkResult{
+			JID:   ag.JID("jid"),
+			Error: ag.OptionalInt("error"),
+		})
+	}
+	return results
+}
+
+// DeleteCommunity deactivates a community. Its groups are unlinked, not
+// deleted.
+func (cli *Client) DeleteCommunity(ctx context.Context, parent types.JID) error {
+	_, err := cli.sendGroupIQ(ctx, iqSet, parent, waBinary.Node{Tag: "delete_parent"})
+	return err
+}
+
+// ErrJoinRequiresApproval is returned by JoinLinkedGroup when the group asks
+// admins to approve new members: a request to join was sent instead.
+var ErrJoinRequiresApproval = errors.New("joining this group requires admin approval, a request was sent")
+
+// JoinLinkedGroup joins a group in a community you're a member of, the way
+// WhatsApp Web's "Join group" in a community does.
+func (cli *Client) JoinLinkedGroup(ctx context.Context, parent, child types.JID) error {
+	resp, err := cli.sendGroupIQ(ctx, iqSet, parent, waBinary.Node{
+		Tag:   "join_linked_group",
+		Attrs: waBinary.Attrs{"jid": child},
+	})
+	if err != nil {
+		return err
+	}
+	if _, ok := resp.GetOptionalChildByTag("membership_approval_request"); ok {
+		return ErrJoinRequiresApproval
+	}
+	return nil
+}
+
+// QueryLinkedGroup gets the info of a group in a community through the
+// community, which works for groups you aren't in.
+func (cli *Client) QueryLinkedGroup(ctx context.Context, parent, child types.JID) (*types.GroupInfo, error) {
+	resp, err := cli.sendGroupIQ(ctx, iqGet, parent, waBinary.Node{
+		Tag: "query_linked",
+		Attrs: waBinary.Attrs{
+			"type": string(types.GroupLinkChangeTypeSub),
+			"jid":  child,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	groupNode, ok := resp.GetOptionalChildByTag("linked_group", "group")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "group", In: "response to linked group query"}
+	}
+	return cli.parseGroupNode(&groupNode)
+}
+
+// RemoveCommunityParticipants removes people from a community and from every
+// group in it.
+func (cli *Client) RemoveCommunityParticipants(ctx context.Context, parent types.JID, participants []types.JID) ([]types.GroupParticipant, error) {
+	content := make([]waBinary.Node, len(participants))
+	for i, participant := range participants {
+		content[i] = waBinary.Node{Tag: "participant", Attrs: waBinary.Attrs{"jid": participant}}
+	}
+	resp, err := cli.sendGroupIQ(ctx, iqSet, parent, waBinary.Node{
+		Tag:     string(ParticipantChangeRemove),
+		Attrs:   waBinary.Attrs{"linked_groups": "true"},
+		Content: content,
+	})
+	if err != nil {
+		return nil, err
+	}
+	removed, ok := resp.GetOptionalChildByTag(string(ParticipantChangeRemove))
+	if !ok {
+		return nil, &ElementMissingError{Tag: string(ParticipantChangeRemove), In: "response to community participant removal"}
+	}
+	children := removed.GetChildrenByTag("participant")
+	results := make([]types.GroupParticipant, len(children))
+	for i, child := range children {
+		results[i] = parseParticipant(child.AttrGetter(), &child)
+	}
+	return results, nil
 }
 
 // LeaveGroup leaves the specified group on WhatsApp.
@@ -460,7 +629,7 @@ func (cli *Client) GetGroupInfoFromInvite(ctx context.Context, jid, inviter type
 	if err != nil {
 		return nil, err
 	}
-	groupNode, ok := resp.GetOptionalChildByTag("group")
+	groupNode, ok := groupOrCommunityChild(resp)
 	if !ok {
 		return nil, &ElementMissingError{Tag: "group", In: "response to invite group info query"}
 	}
@@ -470,8 +639,14 @@ func (cli *Client) GetGroupInfoFromInvite(ctx context.Context, jid, inviter type
 // JoinGroupWithInvite joins a group using an invite message.
 //
 // Note that this is specifically for invite messages, not invite links. Use JoinGroupWithLink for joining with chat.whatsapp.com links.
+//
+// If the group asks admins to approve new members, a request to join is sent
+// and ErrJoinRequiresApproval is returned.
 func (cli *Client) JoinGroupWithInvite(ctx context.Context, jid, inviter types.JID, code string, expiration int64) error {
-	_, err := cli.sendGroupIQ(ctx, iqSet, jid, waBinary.Node{
+	if expiration > 0 && time.Unix(expiration, 0).Before(time.Now()) {
+		return ErrInviteExpired
+	}
+	resp, err := cli.sendGroupIQ(ctx, iqSet, jid, waBinary.Node{
 		Tag: "accept",
 		Attrs: waBinary.Attrs{
 			"code":       code,
@@ -479,7 +654,43 @@ func (cli *Client) JoinGroupWithInvite(ctx context.Context, jid, inviter types.J
 			"admin":      inviter,
 		},
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if _, ok := resp.GetOptionalChildByTag("membership_approval_request"); ok {
+		return ErrJoinRequiresApproval
+	}
+	return nil
+}
+
+// ErrInviteExpired is returned by JoinGroupWithInvite for an invite message
+// whose expiry time has passed.
+var ErrInviteExpired = errors.New("this group invite has expired")
+
+// groupOrCommunityChild finds the group in a response, which names it
+// <community> instead of <group> when it's a community.
+func groupOrCommunityChild(node *waBinary.Node) (waBinary.Node, bool) {
+	if group, ok := node.GetOptionalChildByTag("group"); ok {
+		return group, true
+	}
+	return node.GetOptionalChildByTag("community")
+}
+
+// inviteCode pulls the code out of a group invite link in any of the forms
+// WhatsApp uses (chat.whatsapp.com/CODE, chat.whatsapp.com/invite/CODE,
+// ...?code=CODE), or returns the input when it's already a bare code.
+func inviteCode(link string) string {
+	link = strings.TrimSpace(link)
+	if parsed, err := url.Parse(link); err == nil {
+		if code := parsed.Query().Get("code"); code != "" {
+			return code
+		}
+		if parsed.Host == "chat.whatsapp.com" {
+			path := strings.Trim(parsed.Path, "/")
+			return strings.TrimPrefix(path, "invite/")
+		}
+	}
+	return strings.TrimSuffix(stripURLPrefix(link, InviteLinkPrefix), "/")
 }
 
 // GetGroupInfoFromLink resolves the given invite link and asks the WhatsApp servers for info about the group.
@@ -488,7 +699,7 @@ func (cli *Client) GetGroupInfoFromLink(ctx context.Context, code string) (*type
 	resp, err := cli.sendGroupIQ(ctx, iqGet, types.GroupServerJID, waBinary.Node{
 		Tag: "invite",
 		Attrs: waBinary.Attrs{
-			"code": stripURLPrefix(code, InviteLinkPrefix),
+			"code": inviteCode(code),
 		},
 	})
 	if errors.Is(err, ErrIQGone) {
@@ -498,7 +709,7 @@ func (cli *Client) GetGroupInfoFromLink(ctx context.Context, code string) (*type
 	} else if err != nil {
 		return nil, err
 	}
-	groupNode, ok := resp.GetOptionalChildByTag("group")
+	groupNode, ok := groupOrCommunityChild(resp)
 	if !ok {
 		return nil, &ElementMissingError{Tag: "group", In: "response to group link info query"}
 	}
@@ -510,7 +721,7 @@ func (cli *Client) JoinGroupWithLink(ctx context.Context, code string) (types.JI
 	resp, err := cli.sendGroupIQ(ctx, iqSet, types.GroupServerJID, waBinary.Node{
 		Tag: "invite",
 		Attrs: waBinary.Attrs{
-			"code": stripURLPrefix(code, InviteLinkPrefix),
+			"code": inviteCode(code),
 		},
 	})
 	if errors.Is(err, ErrIQGone) {
@@ -524,7 +735,7 @@ func (cli *Client) JoinGroupWithLink(ctx context.Context, code string) (types.JI
 	if ok {
 		return membershipApprovalModeNode.AttrGetter().JID("jid"), nil
 	}
-	groupNode, ok := resp.GetOptionalChildByTag("group")
+	groupNode, ok := groupOrCommunityChild(resp)
 	if !ok {
 		return types.EmptyJID, &ElementMissingError{Tag: "group", In: "response to group link join query"}
 	}
@@ -609,7 +820,7 @@ func (cli *Client) GetLinkedGroupsParticipants(ctx context.Context, community ty
 	if !ok {
 		return nil, &ElementMissingError{Tag: "linked_groups_participants", In: "response to community participants query"}
 	}
-	members, lidPairs := parseParticipantList(&participants)
+	members, lidPairs, _ := parseParticipantList(&participants)
 	if len(lidPairs) > 0 {
 		err = cli.Store.LIDs.PutManyLIDMappings(ctx, lidPairs)
 		if err != nil {
@@ -668,7 +879,7 @@ func (cli *Client) getGroupInfo(ctx context.Context, jid types.JID, lockParticip
 		return nil, err
 	}
 
-	groupNode, ok := res.GetOptionalChildByTag("group")
+	groupNode, ok := groupOrCommunityChild(res)
 	if !ok {
 		return nil, &ElementMissingError{Tag: "groups", In: "response to group info query"}
 	}
@@ -735,6 +946,8 @@ func (cli *Client) parseGroupNode(groupNode *waBinary.Node) (*types.GroupInfo, e
 	ag := groupNode.AttrGetter()
 
 	group.JID = types.NewJID(ag.String("id"), types.GroupServer)
+	// A community comes as <community> in some responses, without a <parent>.
+	group.IsParent = groupNode.Tag == "community"
 	group.OwnerJID = ag.OptionalJIDOrEmpty("creator")
 	group.OwnerPN = ag.OptionalJIDOrEmpty("creator_pn")
 
@@ -783,10 +996,16 @@ func (cli *Client) parseGroupNode(groupNode *waBinary.Node) (*types.GroupInfo, e
 		case "parent":
 			group.IsParent = true
 			group.DefaultMembershipApprovalMode = childAG.OptionalString("default_membership_approval_mode")
+		case "allow_non_admin_sub_group_creation":
+			group.AllowNonAdminSubGroupCreation = true
+		case "general_chat":
+			group.IsGeneralChat = true
+		case "hidden_group":
+			group.IsHiddenGroup = true
 		case "incognito":
 			group.IsIncognito = true
 		case "membership_approval_mode":
-			group.IsJoinApprovalRequired = true
+			group.IsJoinApprovalRequired = membershipApprovalEnabled(&child)
 		case "suspended":
 			group.Suspended = true
 		default:
@@ -806,6 +1025,8 @@ func parseGroupLinkTargetNode(groupNode *waBinary.Node) (types.GroupLinkTarget, 
 	if jidKey.IsEmpty() {
 		jidKey = types.NewJID(ag.String("id"), types.GroupServer)
 	}
+	_, isGeneralChat := groupNode.GetOptionalChildByTag("general_chat")
+	_, isHidden := groupNode.GetOptionalChildByTag("hidden_group")
 	return types.GroupLinkTarget{
 		JID: jidKey,
 		GroupName: types.GroupName{
@@ -815,10 +1036,26 @@ func parseGroupLinkTargetNode(groupNode *waBinary.Node) (types.GroupLinkTarget, 
 		GroupIsDefaultSub: types.GroupIsDefaultSub{
 			IsDefaultSubGroup: groupNode.GetChildByTag("default_sub_group").Tag == "default_sub_group",
 		},
+		GroupSubGroupProperties: types.GroupSubGroupProperties{
+			IsGeneralChat: isGeneralChat,
+			IsHiddenGroup: isHidden,
+		},
+		ParticipantCount: ag.OptionalInt("size"),
 	}, ag.Error()
 }
 
-func parseParticipantList(node *waBinary.Node) (participants []types.JID, lidPairs []store.LIDMapping) {
+// membershipApprovalEnabled reads a <membership_approval_mode> element, which
+// carries <group_join state="on|off"/> - it's present when approval is
+// turned off too.
+func membershipApprovalEnabled(node *waBinary.Node) bool {
+	join, ok := node.GetOptionalChildByTag("group_join")
+	if !ok {
+		return true
+	}
+	return join.AttrGetter().OptionalString("state") != "off"
+}
+
+func parseParticipantList(node *waBinary.Node) (participants []types.JID, lidPairs []store.LIDMapping, redactedPhones []store.RedactedPhoneEntry) {
 	children := node.GetChildren()
 	participants = make([]types.JID, 0, len(children))
 	for _, child := range children {
@@ -827,6 +1064,11 @@ func parseParticipantList(node *waBinary.Node) (participants []types.JID, lidPai
 			continue
 		}
 		participants = append(participants, jid)
+		// Someone who hides their number comes with it masked
+		// ("+91∙∙∙∙∙∙∙∙62"), the same as in full group info.
+		if displayName, ok := child.Attrs["display_name"].(string); ok && displayName != "" && jid.Server == types.HiddenUserServer {
+			redactedPhones = append(redactedPhones, store.RedactedPhoneEntry{JID: jid, RedactedPhone: displayName})
+		}
 		if jid.Server == types.HiddenUserServer {
 			phoneNumber, ok := child.Attrs["phone_number"].(types.JID)
 			if ok && !phoneNumber.IsEmpty() {
@@ -874,7 +1116,7 @@ func (cli *Client) parseGroupCreate(parentNode, node *waBinary.Node) (*events.Jo
 	return &evt, lidPairs, redactedPhones, nil
 }
 
-func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []store.LIDMapping, error) {
+func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []store.LIDMapping, []store.RedactedPhoneEntry, error) {
 	var evt events.GroupInfo
 	ag := node.AttrGetter()
 	evt.JID = ag.JID("from")
@@ -883,10 +1125,24 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 	evt.SenderPN = ag.OptionalJID("participant_pn")
 	evt.Timestamp = ag.UnixTime("t")
 	if !ag.OK() {
-		return nil, nil, fmt.Errorf("group change doesn't contain required attributes: %w", ag.Error())
+		return nil, nil, nil, fmt.Errorf("group change doesn't contain required attributes: %w", ag.Error())
 	}
 
 	var lidPairs []store.LIDMapping
+	var redactedPhones []store.RedactedPhoneEntry
+	// Whoever made the change is named by both addresses in a group that
+	// hides numbers.
+	if evt.Sender != nil && evt.SenderPN != nil && evt.Sender.Server == types.HiddenUserServer && evt.SenderPN.Server == types.DefaultUserServer {
+		lidPairs = append(lidPairs, store.LIDMapping{LID: evt.Sender.ToNonAD(), PN: evt.SenderPN.ToNonAD()})
+	}
+	// One notification can carry several participant lists (say, an add and
+	// a promote), so every list's mappings are kept, not just the last one's.
+	participantList := func(child *waBinary.Node) []types.JID {
+		jids, pairs, redacted := parseParticipantList(child)
+		lidPairs = append(lidPairs, pairs...)
+		redactedPhones = append(redactedPhones, redacted...)
+		return jids
+	}
 	for _, child := range node.GetChildren() {
 		cag := child.AttrGetter()
 		if child.Tag == "add" || child.Tag == "remove" || child.Tag == "promote" || child.Tag == "demote" {
@@ -896,13 +1152,26 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 		switch child.Tag {
 		case "add":
 			evt.JoinReason = cag.OptionalString("reason")
-			evt.Join, lidPairs = parseParticipantList(&child)
+			evt.Join = participantList(&child)
 		case "remove":
-			evt.Leave, lidPairs = parseParticipantList(&child)
+			evt.Leave = participantList(&child)
 		case "promote":
-			evt.Promote, lidPairs = parseParticipantList(&child)
+			evt.Promote = participantList(&child)
 		case "demote":
-			evt.Demote, lidPairs = parseParticipantList(&child)
+			evt.Demote = participantList(&child)
+		case "modify":
+			evt.Modify = participantList(&child)
+		case "linked_group_promote":
+			evt.LinkedGroupPromote = participantList(&child)
+		case "linked_group_demote":
+			evt.LinkedGroupDemote = participantList(&child)
+		case "allow_non_admin_sub_group_creation", "not_allow_non_admin_sub_group_creation":
+			allowed := child.Tag == "allow_non_admin_sub_group_creation"
+			evt.AllowNonAdminSubGroupCreation = &allowed
+		case "member_add_mode":
+			modeBytes, _ := child.Content.([]byte)
+			mode := types.GroupMemberAddMode(modeBytes)
+			evt.MemberAddMode = &mode
 		case "locked":
 			evt.Locked = &types.GroupLocked{IsLocked: true}
 		case "unlocked":
@@ -923,7 +1192,7 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 				topicChild := child.GetChildByTag("body")
 				topicBytes, ok := topicChild.Content.([]byte)
 				if !ok {
-					return nil, nil, fmt.Errorf("group change description has unexpected body: %s", &topicChild)
+					return nil, nil, nil, fmt.Errorf("group change description has unexpected body: %s", &topicChild)
 				}
 				topicStr = string(topicBytes)
 			}
@@ -965,12 +1234,12 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 			}
 			groupNode, ok := child.GetOptionalChildByTag("group")
 			if !ok {
-				return nil, nil, &ElementMissingError{Tag: "group", In: "group link"}
+				return nil, nil, nil, &ElementMissingError{Tag: "group", In: "group link"}
 			}
 			var err error
 			evt.Link.Group, err = parseGroupLinkTargetNode(&groupNode)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse group link node in group change: %w", err)
+				return nil, nil, nil, fmt.Errorf("failed to parse group link node in group change: %w", err)
 			}
 		case "unlink":
 			evt.Unlink = &types.GroupLinkChange{
@@ -979,16 +1248,16 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 			}
 			groupNode, ok := child.GetOptionalChildByTag("group")
 			if !ok {
-				return nil, nil, &ElementMissingError{Tag: "group", In: "group unlink"}
+				return nil, nil, nil, &ElementMissingError{Tag: "group", In: "group unlink"}
 			}
 			var err error
 			evt.Unlink.Group, err = parseGroupLinkTargetNode(&groupNode)
 			if err != nil {
-				return nil, nil, fmt.Errorf("failed to parse group unlink node in group change: %w", err)
+				return nil, nil, nil, fmt.Errorf("failed to parse group unlink node in group change: %w", err)
 			}
 		case "membership_approval_mode":
 			evt.MembershipApprovalMode = &types.GroupMembershipApprovalMode{
-				IsJoinApprovalRequired: true,
+				IsJoinApprovalRequired: membershipApprovalEnabled(&child),
 			}
 		case "suspended":
 			evt.Suspended = true
@@ -998,10 +1267,10 @@ func (cli *Client) parseGroupChange(node *waBinary.Node) (*events.GroupInfo, []s
 			evt.UnknownChanges = append(evt.UnknownChanges, &child)
 		}
 		if !cag.OK() {
-			return nil, nil, fmt.Errorf("group change %s element doesn't contain required attributes: %w", child.Tag, cag.Error())
+			return nil, nil, nil, fmt.Errorf("group change %s element doesn't contain required attributes: %w", child.Tag, cag.Error())
 		}
 	}
-	return &evt, lidPairs, nil
+	return &evt, lidPairs, redactedPhones, nil
 }
 
 func (cli *Client) updateGroupParticipantCache(evt *events.GroupInfo) {
@@ -1039,14 +1308,80 @@ func (cli *Client) parseGroupNotification(node *waBinary.Node) (any, []store.LID
 	children := node.GetChildren()
 	if len(children) == 1 && children[0].Tag == "create" {
 		return cli.parseGroupCreate(node, &children[0])
+	} else if len(children) > 0 && children[0].Tag == "groups_dirty" {
+		// Sent by the server about itself (from is s.whatsapp.net), so it
+		// must not be read as a change to a group.
+		return cli.handleGroupsDirty(&children[0]), nil, nil, nil
 	} else {
-		groupChange, lidPairs, err := cli.parseGroupChange(node)
+		groupChange, lidPairs, redactedPhones, err := cli.parseGroupChange(node)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		cli.updateGroupParticipantCache(groupChange)
-		return groupChange, lidPairs, nil, nil
+		return groupChange, lidPairs, redactedPhones, nil
 	}
+}
+
+// handleGroupsDirty drops the cached info of the groups the server says is
+// stale, so the next send to each fetches its member list again rather than
+// encrypting for devices that are no longer in it.
+func (cli *Client) handleGroupsDirty(node *waBinary.Node) *events.GroupsDirty {
+	var evt events.GroupsDirty
+	for _, child := range node.GetChildrenByTag("group") {
+		if jid, ok := child.Attrs["jid"].(types.JID); ok {
+			evt.Groups = append(evt.Groups, jid)
+		}
+	}
+	cli.groupCacheLock.Lock()
+	for _, jid := range evt.Groups {
+		delete(cli.groupCache, jid)
+	}
+	cli.groupCacheLock.Unlock()
+	return &evt
+}
+
+// rotateGroupSenderKey throws away our sender key for a group, so the next
+// message there starts a new one. WhatsApp Web does this when someone leaves
+// or is removed, or changes number, so they can't read what we send after.
+// (Every group message already carries the key to all current members, so
+// nothing else has to happen.)
+func (cli *Client) rotateGroupSenderKey(ctx context.Context, group types.JID) {
+	empty := groupRecord.NewSenderKey(store.SignalProtobufSerializer.SenderKeyRecord, store.SignalProtobufSerializer.SenderKeyState)
+	for _, own := range []types.JID{cli.getOwnLID(), cli.getOwnID()} {
+		if own.IsEmpty() {
+			continue
+		}
+		name := protocol.NewSenderKeyName(group.String(), own.SignalAddress())
+		if err := cli.Store.StoreSenderKey(ctx, name, empty); err != nil {
+			cli.Log.Warnf("Failed to rotate our sender key for %s: %v", group, err)
+		}
+	}
+}
+
+// afterGroupChange keeps what we hold for a group in step with a change to
+// it: a member list that no longer matches is dropped, and our sender key is
+// replaced when someone who could read it is gone.
+func (cli *Client) afterGroupChange(ctx context.Context, evt *events.GroupInfo) {
+	if len(evt.Modify) > 0 {
+		cli.groupCacheLock.Lock()
+		delete(cli.groupCache, evt.JID)
+		cli.groupCacheLock.Unlock()
+	}
+	othersLeft := false
+	for _, jid := range evt.Leave {
+		if !cli.isOwnJID(jid) {
+			othersLeft = true
+			break
+		}
+	}
+	if othersLeft || len(evt.Modify) > 0 {
+		cli.rotateGroupSenderKey(ctx, evt.JID)
+	}
+}
+
+func (cli *Client) isOwnJID(jid types.JID) bool {
+	jid = jid.ToNonAD()
+	return jid == cli.getOwnID().ToNonAD() || jid == cli.getOwnLID().ToNonAD()
 }
 
 // SetGroupJoinApprovalMode sets the group join approval mode to 'on' or 'off'.

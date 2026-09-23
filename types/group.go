@@ -33,6 +33,7 @@ type GroupInfo struct {
 	GroupParent
 	GroupLinkedParent
 	GroupIsDefaultSub
+	GroupSubGroupProperties
 	GroupMembershipApprovalMode
 
 	AddressingMode     AddressingMode
@@ -56,6 +57,19 @@ type GroupMembershipApprovalMode struct {
 type GroupParent struct {
 	IsParent                      bool
 	DefaultMembershipApprovalMode string // request_required
+	// AllowNonAdminSubGroupCreation is set on a community whose members may
+	// add groups to it without being admins.
+	AllowNonAdminSubGroupCreation bool
+}
+
+// GroupSubGroupProperties describes a group linked into a community.
+type GroupSubGroupProperties struct {
+	// IsGeneralChat marks the community's general chat, which every member is
+	// added to automatically.
+	IsGeneralChat bool
+	// IsHiddenGroup marks a group that isn't listed in the community for
+	// people who aren't in it.
+	IsHiddenGroup bool
 }
 
 type GroupLinkedParent struct {
@@ -154,6 +168,16 @@ type GroupLinkTarget struct {
 	JID JID
 	GroupName
 	GroupIsDefaultSub
+	GroupSubGroupProperties
+	// ParticipantCount is the group's size, when the server includes it.
+	ParticipantCount int
+}
+
+// GroupLinkResult is one group's outcome in a batch link or unlink request.
+type GroupLinkResult struct {
+	JID JID
+	// Error is the server's error code for this group, or 0 if it succeeded.
+	Error int
 }
 
 type GroupLinkChange struct {

@@ -520,11 +520,43 @@ type GroupInfo struct {
 	Join  []types.JID // Users who joined or were added the group
 	Leave []types.JID // Users who left or were removed from the group
 
-	Promote        []types.JID // Users who were promoted to admins
-	Demote         []types.JID // Users who were demoted to normal users
-	Suspended      bool        // whether the group is suspended
-	Unsuspended    bool        // whether the group is unsuspended
+	Promote []types.JID // Users who were promoted to admins
+	Demote  []types.JID // Users who were demoted to normal users
+
+	// Users who changed their phone number (or moved between phone and LID
+	// addressing), under their new address.
+	Modify []types.JID
+
+	// Community only: users who became, or stopped being, admins of the
+	// community's linked groups.
+	LinkedGroupPromote []types.JID
+	LinkedGroupDemote  []types.JID
+
+	// Community only: whether members may add groups without being admins.
+	AllowNonAdminSubGroupCreation *bool
+
+	MemberAddMode *types.GroupMemberAddMode // Who can add members changed
+
+	Suspended      bool // whether the group is suspended
+	Unsuspended    bool // whether the group is unsuspended
 	UnknownChanges []*waBinary.Node
+}
+
+// GroupsDirty is emitted when the server says what we know about some groups
+// (their member lists especially) is out of date. The cached info for them has
+// already been dropped; apps keeping their own copy should fetch it again.
+type GroupsDirty struct {
+	Groups []types.JID
+}
+
+// DirtyState is emitted when the server marks some of our state as stale
+// (type "groups", "account_sync", "syncd_app_state" or
+// "newsletter_metadata"). The client marks it clean itself, after resyncing
+// app state for "syncd_app_state" and dropping cached group info for
+// "groups"; apps keeping their own copy of that data should refresh it.
+type DirtyState struct {
+	Type      string
+	Timestamp time.Time
 }
 
 // Picture is emitted when a user's profile picture or group's photo is changed.

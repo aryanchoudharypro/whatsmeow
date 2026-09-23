@@ -144,8 +144,11 @@ type Client struct {
 
 	privacySettingsCache atomic.Value
 
-	groupCache           map[types.JID]*groupMetaCache
-	groupCacheLock       sync.Mutex
+	groupCache     map[types.JID]*groupMetaCache
+	groupCacheLock sync.Mutex
+	// offlineSyncDone is set once the server has delivered everything that
+	// arrived while we were offline, on the current connection.
+	offlineSyncDone      atomic.Bool
 	userDevicesCache     map[types.JID]deviceCache
 	userDevicesCacheLock sync.Mutex
 

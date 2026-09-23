@@ -107,6 +107,38 @@ type NewsletterMetadata struct {
 type NewsletterViewerMetadata struct {
 	Mute NewsletterMuteState `json:"mute"`
 	Role NewsletterRole      `json:"role"`
+	// Newer responses carry mute state here instead of in Mute.
+	Settings []NewsletterUserSetting `json:"settings"`
+}
+
+// NewsletterUserSetting is one of the viewer's own settings for a channel.
+type NewsletterUserSetting struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+// Viewer setting types WhatsApp Web uses.
+const (
+	// NewsletterSettingMuteAdminActivity mutes the channel's own posts: the
+	// "Mute" a follower turns on.
+	NewsletterSettingMuteAdminActivity = "MUTE_ADMIN_ACTIVITY"
+	// NewsletterSettingMuteFollowerActivity mutes follower activity, for
+	// owners and admins.
+	NewsletterSettingMuteFollowerActivity = "MUTE_FOLLOWER_ACTIVITY"
+)
+
+// IsMuted reports whether the viewer muted the channel's posts, from either
+// the newer settings list or the older mute field.
+func (nvm *NewsletterViewerMetadata) IsMuted() bool {
+	if nvm == nil {
+		return false
+	}
+	for _, setting := range nvm.Settings {
+		if setting.Type == NewsletterSettingMuteAdminActivity {
+			return setting.Value == "ON"
+		}
+	}
+	return nvm.Mute == NewsletterMuteOn
 }
 
 type NewsletterKeyType string

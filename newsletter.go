@@ -136,6 +136,15 @@ const (
 	mutationCreateNewsletterDesktop    = "27527996220149684"
 	mutationUnfollowNewsletterDesktop  = "8782612271820087"
 	mutationFollowNewsletterDesktop    = "8621797084555037"
+
+	// The persisted queries WhatsApp Web uses now (WAWebMex*Job). The server
+	// rejects a query that leaves out any variable its document declares,
+	// so every one is sent.
+	queryFetchAllNewslettersMetadata = "25399611239711790" // WAWebMexFetchAllNewslettersMetadataJobQuery
+	queryFetchNewsletterV2           = "27456920720571478" // WAWebMexFetchNewsletterJobQuery
+	mutationJoinNewsletter           = "24404358912487870" // WAWebMexJoinNewsletterJobMutation
+	mutationLeaveNewsletter          = "9767147403369991"  // WAWebMexLeaveNewsletterJobMutation
+	mutationNewsletterUserSetting    = "31938993655691868" // WAWebMexUpdateNewsletterUserSettingJobMutation
 )
 
 func convertQueryID(cli *Client, queryID string) string {
@@ -247,10 +256,16 @@ type respGetNewsletterInfo struct {
 }
 
 func (cli *Client) getNewsletterInfo(ctx context.Context, input map[string]any, fetchViewerMeta bool) (*types.NewsletterMetadata, error) {
-	data, err := cli.sendMexIQ(ctx, queryFetchNewsletter, map[string]any{
+	// WA Web asks as a guest whatever the viewer's actual role, and gets the
+	// role back in viewer_metadata.
+	input["view_role"] = "GUEST"
+	data, err := cli.sendMexIQ(ctx, queryFetchNewsletterV2, map[string]any{
 		"fetch_creation_time":   true,
 		"fetch_full_image":      true,
 		"fetch_viewer_metadata": fetchViewerMeta,
+		"fetch_pinned_messages": false,
+		"fetch_status_metadata": false,
+		"fetch_wamo_sub":        false,
 		"input":                 input,
 	})
 	var respData respGetNewsletterInfo
@@ -289,7 +304,10 @@ type respGetSubscribedNewsletters struct {
 
 // GetSubscribedNewsletters gets the info of all newsletters that you're joined to.
 func (cli *Client) GetSubscribedNewsletters(ctx context.Context) ([]*types.NewsletterMetadata, error) {
-	data, err := cli.sendMexIQ(ctx, querySubscribedNewsletters, map[string]any{})
+	data, err := cli.sendMexIQ(ctx, queryFetchAllNewslettersMetadata, map[string]any{
+		"fetch_status_metadata": false,
+		"fetch_wamo_sub":        false,
+	})
 	var respData respGetSubscribedNewsletters
 	if data != nil {
 		jsonErr := json.Unmarshal(data, &respData)
@@ -347,32 +365,51 @@ func (cli *Client) AcceptTOSNotice(ctx context.Context, noticeID, stage string) 
 	return err
 }
 
-// NewsletterToggleMute changes the mute status of a newsletter.
+// NewsletterToggleMute changes the mute status of a newsletter: whether its
+// new posts notify. WhatsApp Web stores this as the MUTE_ADMIN_ACTIVITY user
+// setting.
 func (cli *Client) NewsletterToggleMute(ctx context.Context, jid types.JID, mute bool) error {
-	query := mutationUnmuteNewsletter
+	value := "OFF"
 	if mute {
-		query = mutationMuteNewsletter
+		value = "ON"
 	}
-	_, err := cli.sendMexIQ(ctx, query, map[string]any{
-		"newsletter_id": jid.String(),
+	_, err := cli.sendMexIQ(ctx, mutationNewsletterUserSetting, map[string]any{
+		"input": map[string]any{
+			"newsletter_id": jid.String(),
+			"type":          types.NewsletterSettingMuteAdminActivity,
+			"value":         value,
+		},
 	})
 	return err
 }
 
 // FollowNewsletter makes the user follow (join) a WhatsApp channel.
 func (cli *Client) FollowNewsletter(ctx context.Context, jid types.JID) error {
-	_, err := cli.sendMexIQ(ctx, mutationFollowNewsletter, map[string]any{
-		"newsletter_id": jid.String(),
-	})
-	return err
+	return cli.newsletterMembership(ctx, mutationJoinNewsletter, "xwa2_newsletter_join_v2", jid)
 }
 
 // UnfollowNewsletter makes the user unfollow (leave) a WhatsApp channel.
 func (cli *Client) UnfollowNewsletter(ctx context.Context, jid types.JID) error {
-	_, err := cli.sendMexIQ(ctx, mutationUnfollowNewsletter, map[string]any{
+	return cli.newsletterMembership(ctx, mutationLeaveNewsletter, "xwa2_newsletter_leave_v2", jid)
+}
+
+// newsletterMembership runs a follow or unfollow. A null result field means
+// the server didn't do it, which WA Web treats as a failure.
+func (cli *Client) newsletterMembership(ctx context.Context, mutation, resultField string, jid types.JID) error {
+	data, err := cli.sendMexIQ(ctx, mutation, map[string]any{
 		"newsletter_id": jid.String(),
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	var result map[string]json.RawMessage
+	if err = json.Unmarshal(data, &result); err != nil {
+		return fmt.Errorf("failed to parse newsletter membership response: %w", err)
+	}
+	if raw, ok := result[resultField]; !ok || string(raw) == "null" {
+		return fmt.Errorf("server didn't confirm the change (%s missing)", resultField)
+	}
+	return nil
 }
 
 type GetNewsletterMessagesParams struct {

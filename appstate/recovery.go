@@ -85,6 +85,14 @@ func (proc *Processor) ProcessRecovery(ctx context.Context, recovery *waSyncdSna
 	if err != nil {
 		return mutations, fmt.Errorf("failed to reset app state version in database: %w", err)
 	}
+	// The recovery replaces the whole collection, so every mutation MAC from
+	// before it goes too - otherwise a stale one can be picked up as the
+	// "previous value" of a later patch and break its LTHash, the same flaw
+	// fetchAppState's full sync clears for a server snapshot.
+	err = proc.Store.AppState.DeleteAllAppStateMutationMACs(ctx, name)
+	if err != nil {
+		return mutations, fmt.Errorf("failed to reset app state mutation MACs in database: %w", err)
+	}
 	err = proc.Store.AppState.PutAppStateVersion(ctx, name, version, *(*[128]byte)(recovery.GetCollectionLthash()))
 	if err != nil {
 		return mutations, fmt.Errorf("failed to update app state version in the database: %w", err)

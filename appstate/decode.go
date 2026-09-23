@@ -12,6 +12,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -349,8 +350,27 @@ func (proc *Processor) validatePatch(
 	}
 
 	if validateMACs {
+		// WhatsApp Web applies a patch whose snapshot MAC (LTHash) doesn't
+		// match rather than rejecting it (WAWebSyncdAntiTampering: for a patch,
+		// not a snapshot, it logs, marks the collection as in "mac mismatch
+		// fatal" and returns the patch). It only refuses when the local
+		// baseline is plainly wrong: an empty hash past v1. Rejecting here left
+		// the whole collection stuck - every later patch built on the one that
+		// failed, so a chat lock/archive/mute couldn't move in either direction
+		// until a full resync, which itself replays the same patch.
+		if currentState.Version > 0 && currentState.Hash == ([128]byte{}) {
+			err = fmt.Errorf("failed to verify patch v%d: empty local LTHash", version)
+			return
+		}
 		var keys ExpandedAppStateKeys
 		keys, err = proc.validateSnapshotMAC(ctx, patchName, newState, patch.GetKeyID().GetID(), patch.GetSnapshotMAC())
+		if errors.Is(err, ErrMismatchingLTHash) {
+			if len(warn) > 0 {
+				proc.Log.Warnf("Warnings while updating hash for %s: %+v", patchName, warn)
+			}
+			proc.Log.Warnf("Applying %s patch v%d despite the LTHash mismatch, as WhatsApp Web does", patchName, version)
+			err = nil
+		}
 		if err != nil {
 			return
 		}

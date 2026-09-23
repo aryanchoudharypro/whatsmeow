@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"sync"
 
 	"go.mau.fi/util/exerrors"
@@ -22,6 +23,10 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 )
+
+// reportingTokenVersion is the reporting token version WhatsApp Web sends
+// (its rt_sender_reporting_token_version ab-prop defaults to 2).
+const reportingTokenVersion = 2
 
 //go:embed reportingfields.json
 var reportingFieldsJSON string
@@ -62,7 +67,7 @@ func (cli *Client) getMessageReportingToken(
 		Tag: "reporting",
 		Content: []waBinary.Node{{
 			Tag:     "reporting_token",
-			Attrs:   waBinary.Attrs{"v": "2"},
+			Attrs:   waBinary.Attrs{"v": strconv.Itoa(reportingTokenVersion)},
 			Content: hasher.Sum(nil)[:16],
 		}},
 	}

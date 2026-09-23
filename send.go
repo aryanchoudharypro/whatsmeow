@@ -244,6 +244,11 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		if message.MessageContextInfo.MessageSecret == nil {
 			message.MessageContextInfo.MessageSecret = random.Bytes(32)
 		}
+		// WhatsApp Web stamps the version of the <reporting> token it sends
+		// next to the secret, and receivers validate the token against it.
+		if cli.shouldIncludeReportingToken(message) {
+			message.MessageContextInfo.ReportingTokenVersion = proto.Int32(reportingTokenVersion)
+		}
 	}
 
 	if isBotMode {

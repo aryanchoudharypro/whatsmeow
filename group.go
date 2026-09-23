@@ -717,6 +717,9 @@ func (cli *Client) GetGroupInfoFromLink(ctx context.Context, code string) (*type
 }
 
 // JoinGroupWithLink joins the group using the given invite link.
+//
+// If the group asks admins to approve new members, a request to join is sent
+// and the group's JID is returned together with ErrJoinRequiresApproval.
 func (cli *Client) JoinGroupWithLink(ctx context.Context, code string) (types.JID, error) {
 	resp, err := cli.sendGroupIQ(ctx, iqSet, types.GroupServerJID, waBinary.Node{
 		Tag: "invite",
@@ -733,7 +736,8 @@ func (cli *Client) JoinGroupWithLink(ctx context.Context, code string) (types.JI
 	}
 	membershipApprovalModeNode, ok := resp.GetOptionalChildByTag("membership_approval_request")
 	if ok {
-		return membershipApprovalModeNode.AttrGetter().JID("jid"), nil
+		// Not joined yet: a request went to the admins.
+		return membershipApprovalModeNode.AttrGetter().JID("jid"), ErrJoinRequiresApproval
 	}
 	groupNode, ok := groupOrCommunityChild(resp)
 	if !ok {

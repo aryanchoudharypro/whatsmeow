@@ -29,7 +29,12 @@ const (
 	NewsletterDirectoryTrending    NewsletterDirectoryView = "TRENDING"
 	NewsletterDirectoryPopular     NewsletterDirectoryView = "POPULAR"
 	NewsletterDirectoryNew         NewsletterDirectoryView = "NEW"
+	// NewsletterDirectoryFeatured is what WhatsApp Web lists a category with.
+	NewsletterDirectoryFeatured NewsletterDirectoryView = "FEATURED"
 )
+
+// The directory's categories, as WhatsApp Web lists them.
+var NewsletterDirectoryCategories = []string{"ENTERTAINMENT", "SPORTS", "NEWS", "LIFESTYLE", "PEOPLE", "BUSINESS", "ORGANIZATIONS"}
 
 // NewsletterDirectoryPage is one page of channels from the directory.
 type NewsletterDirectoryPage struct {
@@ -96,13 +101,15 @@ func nonNilStrings(list []string) []string {
 
 // SearchNewsletterDirectory searches the channel directory by name.
 func (cli *Client) SearchNewsletterDirectory(ctx context.Context, query, cursor string, limit int) (*NewsletterDirectoryPage, error) {
-	input := map[string]any{"search_text": query, "limit": limit}
-	if cursor != "" {
-		input["start_cursor"] = cursor
-	}
+	// As WhatsApp Web sends it (captured from web.whatsapp.com).
 	data, err := cli.sendMexIQ(ctx, queryNewsletterDirectorySearch, map[string]any{
-		"fetch_status_metadata": false,
-		"input":                 input,
+		"input": map[string]any{
+			"search_text":  query,
+			"categories":   []string{},
+			"limit":        limit,
+			"start_cursor": cursor,
+		},
+		"fetch_status_metadata": true,
 	})
 	if err != nil {
 		return nil, err

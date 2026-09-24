@@ -43,17 +43,26 @@ type NewsletterDirectoryPage struct {
 // ISO 3166 alpha-2 codes (like "IN") picking whose channels are listed;
 // the server rejects the query without them.
 func (cli *Client) GetNewsletterDirectory(ctx context.Context, view NewsletterDirectoryView, countryCodes []string, cursor string, limit int) (*NewsletterDirectoryPage, error) {
-	input := map[string]any{
-		"view":    string(view),
-		"limit":   limit,
-		"filters": map[string]any{"country_codes": nonNilStrings(countryCodes)},
-	}
-	if cursor != "" {
-		input["start_cursor"] = cursor
-	}
+	// Exactly what WhatsApp Web sends (captured from web.whatsapp.com): an
+	// empty category list and an empty cursor for the first page, and status
+	// metadata asked for. The server picks different channels without them.
+	return cli.GetNewsletterDirectoryInCategories(ctx, view, countryCodes, nil, cursor, limit)
+}
+
+// GetNewsletterDirectoryInCategories is GetNewsletterDirectory limited to
+// some of the directory's categories (none means all).
+func (cli *Client) GetNewsletterDirectoryInCategories(ctx context.Context, view NewsletterDirectoryView, countryCodes, categories []string, cursor string, limit int) (*NewsletterDirectoryPage, error) {
 	data, err := cli.sendMexIQ(ctx, queryNewsletterDirectoryList, map[string]any{
-		"fetch_status_metadata": false,
-		"input":                 input,
+		"input": map[string]any{
+			"view": string(view),
+			"filters": map[string]any{
+				"country_codes": nonNilStrings(countryCodes),
+				"categories":    nonNilStrings(categories),
+			},
+			"limit":        limit,
+			"start_cursor": cursor,
+		},
+		"fetch_status_metadata": true,
 	})
 	if err != nil {
 		return nil, err

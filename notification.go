@@ -366,6 +366,14 @@ func (cli *Client) parseNewsletterMessages(node *waBinary.Node) []*types.Newslet
 						msg.Message = nil
 					}
 				}
+			case "votes":
+				msg.PollVotes = make(map[[32]byte]int)
+				for _, vote := range subchild.GetChildren() {
+					hash, ok := vote.Content.([]byte)
+					if vote.Tag == "vote" && ok && len(hash) == 32 {
+						msg.PollVotes[[32]byte(hash)] = vote.AttrGetter().OptionalInt("count")
+					}
+				}
 			case "views_count":
 				msg.ViewsCount = subchild.AttrGetter().Int("count")
 			case "reactions":

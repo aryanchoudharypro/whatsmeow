@@ -166,6 +166,8 @@ type NewsletterThreadMetadata struct {
 	Picture           *ProfilePictureInfo         `json:"picture"`
 	Preview           ProfilePictureInfo          `json:"preview"`
 	Settings          NewsletterSettings          `json:"settings"`
+	// PinnedMessages are the channel's pinned posts.
+	PinnedMessages []NewsletterPinnedMessage `json:"pinned_messages"`
 
 	//NewsletterMuted `json:"-"`
 	//PrivacyType     NewsletterPrivacy       `json:"-"`
@@ -177,6 +179,28 @@ type NewsletterText struct {
 	Text       string                   `json:"text"`
 	ID         string                   `json:"id"`
 	UpdateTime jsontime.UnixMicroString `json:"update_time"`
+}
+
+// NewsletterPinnedMessage is a pinned channel post. The server sends its
+// fields as numbers or strings, so they're kept raw.
+type NewsletterPinnedMessage struct {
+	RawMessageID json.RawMessage `json:"message_id"`
+	RawExpiry    json.RawMessage `json:"expiry_ts"`
+}
+
+// MessageID is the pinned post's ID as the server gives it: its server ID.
+func (pm NewsletterPinnedMessage) MessageID() string {
+	return string(bytes.Trim(pm.RawMessageID, `"`))
+}
+
+// Expiry is when the pin runs out, or the zero time if it doesn't.
+func (pm NewsletterPinnedMessage) Expiry() time.Time {
+	var ts int64
+	fmt.Sscan(string(bytes.Trim(pm.RawExpiry, `"`)), &ts)
+	if ts <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(ts, 0)
 }
 
 // NewsletterDirectoryEntry is a channel as the channel directory lists it.
@@ -203,6 +227,9 @@ type NewsletterMessage struct {
 	// Edit is EditAttributeAdminEdit on a post that was edited, and
 	// EditAttributeAdminRevoke (with no Message) on one that was deleted.
 	Edit EditAttribute
+	// PollVotes are a channel poll's vote counts, keyed by the SHA-256 of
+	// each option's name.
+	PollVotes map[[32]byte]int
 
 	// This is only present when fetching messages, not in live updates
 	Message *waE2E.Message

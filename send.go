@@ -715,6 +715,10 @@ func (cli *Client) sendNewsletter(
 		"id":   id,
 		"type": getTypeFromMessage(message),
 	}
+	isPoll := message.PollCreationMessage != nil || message.PollCreationMessageV2 != nil || message.PollCreationMessageV3 != nil
+	if isPoll {
+		attrs["type"] = "poll"
+	}
 	if mediaID != "" {
 		attrs["media_id"] = mediaID
 	}
@@ -741,10 +745,15 @@ func (cli *Client) sendNewsletter(
 			plaintextNode.Attrs["mediatype"] = mediaType
 		}
 	}
+	content := []waBinary.Node{plaintextNode}
+	if isPoll {
+		// Like WhatsApp Web, a channel poll says it's one in a meta node.
+		content = append(content, waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{"polltype": "creation"}})
+	}
 	node := waBinary.Node{
 		Tag:     "message",
 		Attrs:   attrs,
-		Content: []waBinary.Node{plaintextNode},
+		Content: content,
 	}
 	start = time.Now()
 	data, err := cli.sendNodeAndGetData(ctx, node)

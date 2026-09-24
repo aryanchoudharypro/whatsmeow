@@ -58,3 +58,15 @@ func TestSimilarNewslettersParse(t *testing.T) {
 		t.Errorf("similar = %+v", page.Channels)
 	}
 }
+
+func TestParseABProps(t *testing.T) {
+	resp := &waBinary.Node{Tag: "iq", Content: []waBinary.Node{{Tag: "props", Attrs: waBinary.Attrs{"protocol": "1"}, Content: []waBinary.Node{
+		{Tag: "prop", Attrs: waBinary.Attrs{"config_code": "29516", "config_value": "false"}},
+		{Tag: "prop", Attrs: waBinary.Attrs{"config_code": "29517", "config_value": "1"}},
+		{Tag: "prop", Attrs: waBinary.Attrs{"event_code": "5138", "sampling_weight": "-1"}},
+	}}}}
+	props := parseABProps(resp)
+	if len(props) != 2 || props.Bool(ABPropChannelsPinAdminEnabled, true) || !props.Bool(ABPropChannelsPinFollowerEnabled, false) || !props.Bool(1, true) {
+		t.Errorf("props = %v", props)
+	}
+}

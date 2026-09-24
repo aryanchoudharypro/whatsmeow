@@ -179,6 +179,17 @@ type NewsletterText struct {
 	UpdateTime jsontime.UnixMicroString `json:"update_time"`
 }
 
+// NewsletterDirectoryEntry is a channel as the channel directory lists it.
+type NewsletterDirectoryEntry struct {
+	ID          JID
+	Name        string
+	Description string
+	Handle      string
+	InviteCode  string
+	Subscribers int
+	Verified    bool
+}
+
 type NewsletterMessage struct {
 	MessageServerID MessageServerID
 	MessageID       MessageID

@@ -18,6 +18,7 @@ import (
 const (
 	queryNewsletterDirectoryList   = "26125047313831973" // WAWebMexFetchNewsletterDirectoryListJobQuery
 	queryNewsletterDirectorySearch = "26301059626252132" // WAWebMexFetchNewsletterDirectorySearchResultsJobQuery
+	queryRecommendedNewslettersV2  = "25806748772361516" // WAWebMexFetchRecommendedNewslettersJobQuery
 )
 
 // NewsletterDirectoryView is one of the directory's lists.
@@ -38,9 +39,15 @@ type NewsletterDirectoryPage struct {
 }
 
 // GetNewsletterDirectory lists channels from the directory, a page at a
-// time. Pass the previous page's NextCursor to continue.
-func (cli *Client) GetNewsletterDirectory(ctx context.Context, view NewsletterDirectoryView, cursor string, limit int) (*NewsletterDirectoryPage, error) {
-	input := map[string]any{"view": string(view), "limit": limit}
+// time. Pass the previous page's NextCursor to continue. countryCodes are
+// ISO 3166 alpha-2 codes (like "IN") picking whose channels are listed;
+// the server rejects the query without them.
+func (cli *Client) GetNewsletterDirectory(ctx context.Context, view NewsletterDirectoryView, countryCodes []string, cursor string, limit int) (*NewsletterDirectoryPage, error) {
+	input := map[string]any{
+		"view":    string(view),
+		"limit":   limit,
+		"filters": map[string]any{"country_codes": nonNilStrings(countryCodes)},
+	}
 	if cursor != "" {
 		input["start_cursor"] = cursor
 	}
@@ -52,6 +59,30 @@ func (cli *Client) GetNewsletterDirectory(ctx context.Context, view NewsletterDi
 		return nil, err
 	}
 	return parseNewsletterDirectoryPage(data, "xwa2_newsletters_directory_list")
+}
+
+// GetRecommendedNewsletters gets the channels WhatsApp recommends for the
+// given countries (ISO 3166 alpha-2 codes).
+func (cli *Client) GetRecommendedNewsletters(ctx context.Context, countryCodes []string, limit int) (*NewsletterDirectoryPage, error) {
+	data, err := cli.sendMexIQ(ctx, queryRecommendedNewslettersV2, map[string]any{
+		"fetch_status_metadata": false,
+		"input": map[string]any{
+			"country_codes": nonNilStrings(countryCodes),
+			"limit":         limit,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseNewsletterDirectoryPage(data, "xwa2_newsletters_recommended")
+}
+
+// nonNilStrings keeps an empty list a list in JSON, never null.
+func nonNilStrings(list []string) []string {
+	if list == nil {
+		return []string{}
+	}
+	return list
 }
 
 // SearchNewsletterDirectory searches the channel directory by name.

@@ -350,12 +350,15 @@ func (cli *Client) parseNewsletterMessages(node *waBinary.Node) []*types.Newslet
 			Timestamp:       ag.UnixTime("t"),
 			ViewsCount:      0,
 			ReactionCounts:  nil,
+			IsSender:        ag.OptionalBool("is_sender"),
+			Edit:            types.EditAttribute(ag.OptionalString("edit")),
 		}
 		for _, subchild := range child.GetChildren() {
 			switch subchild.Tag {
 			case "plaintext":
+				// A deleted post carries an empty plaintext: no message.
 				byteContent, ok := subchild.Content.([]byte)
-				if ok {
+				if ok && len(byteContent) > 0 {
 					msg.Message = new(waE2E.Message)
 					err := proto.Unmarshal(byteContent, msg.Message)
 					if err != nil {

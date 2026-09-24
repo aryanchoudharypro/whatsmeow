@@ -197,6 +197,12 @@ type NewsletterMessage struct {
 	Timestamp       time.Time
 	ViewsCount      int
 	ReactionCounts  map[string]int
+	// IsSender is set on posts we sent ourselves, as one of the channel's
+	// admins.
+	IsSender bool
+	// Edit is EditAttributeAdminEdit on a post that was edited, and
+	// EditAttributeAdminRevoke (with no Message) on one that was deleted.
+	Edit EditAttribute
 
 	// This is only present when fetching messages, not in live updates
 	Message *waE2E.Message

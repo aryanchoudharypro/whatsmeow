@@ -329,19 +329,11 @@ type respCreateNewsletter struct {
 }
 
 // CreateNewsletter creates a new WhatsApp channel.
+//
+// Someone making their first channel has to accept WhatsApp's channel
+// notice first; see NewsletterCreationNoticeID.
 func (cli *Client) CreateNewsletter(ctx context.Context, params CreateNewsletterParams) (*types.NewsletterMetadata, error) {
-	resp, err := cli.sendMexIQ(ctx, mutationCreateNewsletter, map[string]any{
-		"newsletter_input": &params,
-	})
-	if err != nil {
-		return nil, err
-	}
-	var respData respCreateNewsletter
-	err = json.Unmarshal(resp, &respData)
-	if err != nil {
-		return nil, err
-	}
-	return respData.Newsletter, nil
+	return cli.createNewsletterV2(ctx, params)
 }
 
 // AcceptTOSNotice accepts a ToS notice.

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"go.mau.fi/whatsmeow/types"
 )
@@ -21,6 +22,9 @@ const (
 	mutationChangeNewsletterOwner = "9546742745432473"  // WAWebMexChangeNewsletterOwnerJobMutation
 	mutationDemoteNewsletterAdmin = "9880997548630971"  // WAWebMexDemoteNewsletterAdminJobMutation
 	queryNewsletterFollowers      = "27472091235714801" // WAWebMexFetchNewsletterFollowersJobQuery
+	mutationCreateAdminInvite     = "9387141988078609"  // WAWebMexCreateNewsletterAdminInviteJobMutation
+	mutationRevokeAdminInvite     = "9656078347839416"  // WAWebMexRevokeNewsletterAdminInviteJobMutation
+	mutationAcceptAdminInvite     = "9580828702035549"  // WAWebMexAcceptNewsletterAdminInviteJobMutation
 )
 
 // NewsletterCreationNoticeID is the channel-creation notice WhatsApp shows
@@ -219,4 +223,58 @@ func parseNewsletterFollowers(data json.RawMessage) ([]NewsletterFollower, error
 		followers = append(followers, follower)
 	}
 	return followers, nil
+}
+
+// CreateNewsletterAdminInvite lets user become an admin of a channel. Only
+// the owner can. Like WhatsApp, the invite then has to reach them as a
+// NewsletterAdminInviteMessage in a chat (with InviteExpiration set to the
+// returned time), and they accept it with AcceptNewsletterAdminInvite.
+func (cli *Client) CreateNewsletterAdminInvite(ctx context.Context, jid, user types.JID) (time.Time, error) {
+	lid, err := cli.newsletterAdminTarget(ctx, user)
+	if err != nil {
+		return time.Time{}, err
+	}
+	data, err := cli.sendMexIQ(ctx, mutationCreateAdminInvite, map[string]any{
+		"newsletter_id": jid.String(),
+		"user_id":       lid.String(),
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+	var resp struct {
+		Invite *struct {
+			Expiration json.RawMessage `json:"invite_expiration_time"`
+		} `json:"xwa2_newsletter_admin_invite_create"`
+	}
+	if err = json.Unmarshal(data, &resp); err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse admin invite: %w", err)
+	} else if resp.Invite == nil {
+		return time.Time{}, fmt.Errorf("server didn't create the admin invite")
+	}
+	var expiration time.Time
+	if secs := looseInt(resp.Invite.Expiration); secs > 0 {
+		expiration = time.Unix(int64(secs), 0)
+	}
+	return expiration, nil
+}
+
+// RevokeNewsletterAdminInvite cancels an admin invite that hasn't been
+// accepted yet.
+func (cli *Client) RevokeNewsletterAdminInvite(ctx context.Context, jid, user types.JID) error {
+	lid, err := cli.newsletterAdminTarget(ctx, user)
+	if err != nil {
+		return err
+	}
+	return cli.newsletterAdminMutation(ctx, mutationRevokeAdminInvite, "xwa2_newsletter_admin_invite_revoke", map[string]any{
+		"newsletter_id": jid.String(),
+		"user_id":       lid.String(),
+	})
+}
+
+// AcceptNewsletterAdminInvite accepts an invite to become an admin of a
+// channel, sent to us as a NewsletterAdminInviteMessage.
+func (cli *Client) AcceptNewsletterAdminInvite(ctx context.Context, jid types.JID) error {
+	return cli.newsletterAdminMutation(ctx, mutationAcceptAdminInvite, "xwa2_newsletter_admin_invite_accept", map[string]any{
+		"newsletter_id": jid.String(),
+	})
 }

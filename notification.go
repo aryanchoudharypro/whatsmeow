@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -413,6 +414,9 @@ type newsletterEvent struct {
 	// _on_metadata_update
 	// _on_state_change -> id, is_requestor, state
 	NotifyAccountReachoutTimelock *events.NotifyAccountReachoutTimelock `json:"xwa2_notify_account_reachout_timelock"`
+	// Shared by every group property op; only NotificationGroupLimitSharingPropertyUpdate
+	// is dispatched (as GroupLimitSharingUpdate).
+	GroupPropChange *events.GroupLimitSharingUpdate `json:"xwa2_notify_group_on_prop_change"`
 }
 
 func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Node) {
@@ -446,6 +450,18 @@ func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Nod
 		} else if wrapper.Data.NotifyAccountReachoutTimelock != nil {
 			wrapper.Data.NotifyAccountReachoutTimelock.Mex = mnd
 			cli.dispatchEvent(wrapper.Data.NotifyAccountReachoutTimelock)
+		} else if wrapper.Data.GroupPropChange != nil && mnd.OpName == "NotificationGroupLimitSharingPropertyUpdate" {
+			evt := wrapper.Data.GroupPropChange
+			evt.Mex = mnd
+			evt.JID = node.AttrGetter().OptionalJIDOrEmpty("from")
+			if evt.JID.IsEmpty() && evt.ID != "" {
+				if strings.Contains(evt.ID, "@") {
+					evt.JID, _ = types.ParseJID(evt.ID)
+				} else {
+					evt.JID = types.NewJID(evt.ID, types.GroupServer)
+				}
+			}
+			cli.dispatchEvent(evt)
 		}
 	}
 }

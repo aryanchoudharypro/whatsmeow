@@ -8,6 +8,7 @@
 package events
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -669,6 +670,35 @@ type BlocklistChange struct {
 type MexNotificationData struct {
 	Timestamp time.Time
 	OpName    string
+}
+
+// GroupLimitSharingUpdate is emitted when a group's advanced chat privacy
+// setting is turned on or off (mex op NotificationGroupLimitSharingPropertyUpdate,
+// handled by WA Web's WAWebMexLimitSharingUpdateHandler).
+type GroupLimitSharingUpdate struct {
+	Mex MexNotificationData `json:"-"`
+	// JID is the group, from the notification's from attribute.
+	JID       types.JID `json:"-"`
+	ID        string    `json:"id"`
+	UpdatedBy struct {
+		ID         string `json:"id"`
+		PN         string `json:"pn"`
+		NotifyName string `json:"notify_name"`
+	} `json:"updated_by"`
+	Properties struct {
+		LimitSharing *struct {
+			Enabled bool   `json:"limit_sharing_enabled"`
+			Trigger string `json:"limit_sharing_trigger"`
+		} `json:"limit_sharing"`
+	} `json:"properties"`
+	// Seconds; WA Web reads it with Number(), so it may come quoted or not.
+	UpdateTime json.Number `json:"update_time"`
+}
+
+// Enabled reports the new setting; WA Web treats a missing limit_sharing
+// property as turned off.
+func (evt *GroupLimitSharingUpdate) Enabled() bool {
+	return evt.Properties.LimitSharing != nil && evt.Properties.LimitSharing.Enabled
 }
 
 type NewsletterJoin struct {

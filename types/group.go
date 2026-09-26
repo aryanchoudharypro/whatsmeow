@@ -29,6 +29,7 @@ type GroupInfo struct {
 	GroupAnnounce
 	GroupEphemeral
 	GroupIncognito
+	GroupLimitSharing
 
 	GroupParent
 	GroupLinkedParent
@@ -111,6 +112,16 @@ type GroupAnnounce struct {
 
 type GroupIncognito struct {
 	IsIncognito bool
+}
+
+// GroupLimitSharing is a group's advanced chat privacy setting, which stops
+// members exporting the chat, auto-downloading its media and using its
+// messages with Meta AI (including mentioning Meta AI in it).
+type GroupLimitSharing struct {
+	IsLimitSharingEnabled bool
+	// LimitSharingTrigger is what turned the setting on (WA Web's
+	// LimitSharing.Trigger values), or -1 when the server didn't say.
+	LimitSharingTrigger int
 }
 
 // GroupParticipant contains info about a participant of a WhatsApp group chat.

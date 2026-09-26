@@ -1012,6 +1012,12 @@ func (cli *Client) parseGroupNode(groupNode *waBinary.Node) (*types.GroupInfo, e
 			group.IsJoinApprovalRequired = membershipApprovalEnabled(&child)
 		case "suspended":
 			group.Suspended = true
+		case "limit_sharing_enabled":
+			group.IsLimitSharingEnabled = true
+			group.LimitSharingTrigger = childAG.OptionalInt("trigger")
+			if _, ok := child.Attrs["trigger"]; !ok {
+				group.LimitSharingTrigger = -1
+			}
 		default:
 			cli.Log.Debugf("Unknown element in group node %s: %s", group.JID.String(), &child)
 		}

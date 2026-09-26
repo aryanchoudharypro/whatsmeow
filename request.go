@@ -8,6 +8,7 @@ package whatsmeow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -153,8 +154,18 @@ func (cli *Client) sendIQ(ctx context.Context, query infoQuery) (*waBinary.Node,
 	if query.Timeout == 0 {
 		query.Timeout = defaultRequestTimeout
 	}
-	resChan, data, err := cli.sendIQAsyncAndGetData(ctx, &query)
+	// The deadline covers the write as well as the wait. A socket that is
+	// still open but no longer drains (resumed from sleep, network changed
+	// underneath it) blocks the write forever without an error, and an IQ
+	// that only started its clock after the write would hang with it.
+	deadline := time.Now().Add(query.Timeout)
+	writeCtx, cancelWrite := context.WithDeadline(ctx, deadline)
+	resChan, data, err := cli.sendIQAsyncAndGetData(writeCtx, &query)
+	cancelWrite()
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return nil, ErrIQTimedOut
+		}
 		return nil, err
 	}
 	select {
@@ -177,7 +188,7 @@ func (cli *Client) sendIQ(ctx context.Context, query infoQuery) (*waBinary.Node,
 		return res, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-time.After(query.Timeout):
+	case <-time.After(time.Until(deadline)):
 		return nil, ErrIQTimedOut
 	}
 }

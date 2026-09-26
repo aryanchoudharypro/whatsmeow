@@ -46,6 +46,10 @@ const (
 	MediaDocument MediaType = "WhatsApp Document Keys"
 	MediaHistory  MediaType = "WhatsApp History Keys"
 	MediaAppState MediaType = "WhatsApp App State Keys"
+	// MediaGroupHistory is the recent-messages bundle a group admin can
+	// share with members they add. WA Web derives its keys under this
+	// context, not the "WhatsApp History Keys" one history sync uses.
+	MediaGroupHistory MediaType = "Group History"
 
 	MediaStickerPack   MediaType = "WhatsApp Sticker Pack Keys"
 	MediaLinkThumbnail MediaType = "WhatsApp Link Thumbnail Keys"
@@ -88,6 +92,7 @@ var (
 	_ DownloadableMessage   = (*waHistorySync.StickerMetadata)(nil)
 	_ DownloadableMessage   = (*waE2E.HistorySyncNotification)(nil)
 	_ DownloadableMessage   = (*waServerSync.ExternalBlobReference)(nil)
+	_ DownloadableMessage   = (*waE2E.MessageHistoryBundle)(nil)
 	_ DownloadableThumbnail = (*waE2E.ExtendedTextMessage)(nil)
 	_ DownloadableMessage   = (*types.StickerPackItem)(nil)
 )
@@ -103,6 +108,7 @@ var classToMediaType = map[protoreflect.Name]MediaType{
 	"StickerPackMessage":      MediaStickerPack,
 	"HistorySyncNotification": MediaHistory,
 	"ExternalBlobReference":   MediaAppState,
+	"MessageHistoryBundle":    MediaGroupHistory,
 }
 
 var classToThumbnailMediaType = map[protoreflect.Name]MediaType{
@@ -116,6 +122,8 @@ var mediaTypeToMMSType = map[MediaType]string{
 	MediaDocument: "document",
 	MediaHistory:  "md-msg-hist",
 	MediaAppState: "md-app-state",
+
+	MediaGroupHistory: "group-history",
 
 	MediaStickerPack:   "sticker-pack",
 	MediaLinkThumbnail: "thumbnail-link",

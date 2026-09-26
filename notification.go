@@ -374,6 +374,8 @@ func (cli *Client) parseNewsletterMessages(node *waBinary.Node) []*types.Newslet
 						msg.PollVotes[[32]byte(hash)] = vote.AttrGetter().OptionalInt("count")
 					}
 				}
+			case "forwards_count":
+				msg.ForwardsCount = subchild.AttrGetter().Int("count")
 			case "views_count":
 				msg.ViewsCount = subchild.AttrGetter().Int("count")
 			case "reactions":

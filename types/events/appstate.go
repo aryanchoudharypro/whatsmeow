@@ -60,6 +60,15 @@ type QuickReply struct {
 	FromFullSync bool                           // Whether the action is emitted because of a fullSync.
 }
 
+// Favorites is emitted when the favorite chats list is changed from another
+// device. Action carries the complete list in the phone's order, so it
+// replaces whatever the previous event said rather than being a delta.
+type Favorites struct {
+	Timestamp    time.Time                     // The time when the modification happened.
+	Action       *waSyncAction.FavoritesAction // The full list. Empty means no favorites.
+	FromFullSync bool                          // Whether the action is emitted because of a fullSync.
+}
+
 // DisableLinkPreviews is emitted when the "remove link previews" privacy
 // setting is changed from another device.
 type DisableLinkPreviews struct {

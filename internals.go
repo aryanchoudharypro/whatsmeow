@@ -363,7 +363,7 @@ func (int *DangerousInternalClient) KeepAliveLoop(ctx, connCtx context.Context) 
 	int.c.keepAliveLoop(ctx, connCtx)
 }
 
-func (int *DangerousInternalClient) SendKeepAlive(ctx context.Context) (isSuccess, shouldContinue bool) {
+func (int *DangerousInternalClient) SendKeepAlive(ctx context.Context) (isSuccess, shouldContinue, wedged bool) {
 	return int.c.sendKeepAlive(ctx)
 }
 

@@ -8,6 +8,7 @@ package whatsmeow
 
 import (
 	"context"
+	"errors"
 	"math/rand/v2"
 	"time"
 
@@ -34,8 +35,17 @@ func (cli *Client) keepAliveLoop(ctx, connCtx context.Context) {
 		interval := rand.Int64N(KeepAliveIntervalMax.Milliseconds()-KeepAliveIntervalMin.Milliseconds()) + KeepAliveIntervalMin.Milliseconds()
 		select {
 		case <-time.After(time.Duration(interval) * time.Millisecond):
-			isSuccess, shouldContinue := cli.sendKeepAlive(connCtx)
+			isSuccess, shouldContinue, wedged := cli.sendKeepAlive(connCtx)
 			if !shouldContinue {
+				return
+			} else if wedged && cli.EnableAutoReconnect {
+				// The ping couldn't even be written: the socket is open but
+				// no longer drains, so nothing will ever arrive on it.
+				// Waiting out KeepAliveMaxFailTime would only prolong that.
+				cli.Log.Warnf("Forcing reconnect: keepalive ping could not be written")
+				cli.Disconnect()
+				cli.resetExpectedDisconnect()
+				go cli.autoReconnect(ctx)
 				return
 			} else if !isSuccess {
 				errorCount++
@@ -62,26 +72,38 @@ func (cli *Client) keepAliveLoop(ctx, connCtx context.Context) {
 	}
 }
 
-func (cli *Client) sendKeepAlive(ctx context.Context) (isSuccess, shouldContinue bool) {
-	respCh, err := cli.sendIQAsync(ctx, infoQuery{
+// sendKeepAlive pings the server. wedged reports that the ping could not be
+// written within KeepAliveResponseDeadline, which means the socket is stuck
+// rather than the server being slow.
+func (cli *Client) sendKeepAlive(ctx context.Context) (isSuccess, shouldContinue, wedged bool) {
+	// The deadline starts before the write, not after it: a write into a
+	// socket that stopped draining never returns, and would park this loop
+	// forever with the connection still looking up.
+	deadline := time.Now().Add(KeepAliveResponseDeadline)
+	writeCtx, cancelWrite := context.WithDeadline(ctx, deadline)
+	respCh, err := cli.sendIQAsync(writeCtx, infoQuery{
 		Namespace: "w:p",
 		Type:      "get",
 		To:        types.ServerJID,
 	})
+	cancelWrite()
 	if ctx.Err() != nil {
-		return false, false
+		return false, false, false
+	} else if errors.Is(err, context.DeadlineExceeded) {
+		cli.Log.Warnf("Keepalive ping write timed out")
+		return false, true, true
 	} else if err != nil {
 		cli.Log.Warnf("Failed to send keepalive: %v", err)
-		return false, true
+		return false, true, false
 	}
 	select {
 	case <-respCh:
 		// All good
-		return true, true
-	case <-time.After(KeepAliveResponseDeadline):
+		return true, true, false
+	case <-time.After(time.Until(deadline)):
 		cli.Log.Warnf("Keepalive timed out")
-		return false, true
+		return false, true, false
 	case <-ctx.Done():
-		return false, false
+		return false, false, false
 	}
 }

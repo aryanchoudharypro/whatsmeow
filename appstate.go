@@ -340,6 +340,17 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			Action:       mutation.Action.GetQuickReplyAction(),
 			FromFullSync: fullSync,
 		}
+	case appstate.IndexFavorites:
+		// One mutation holds the whole list in the phone's order, so each
+		// event replaces the last. An empty list is the valid "no favorites"
+		// state; a SET without the action at all is malformed.
+		if act := mutation.Action.GetFavoritesAction(); act != nil {
+			eventToDispatch = &events.Favorites{
+				Timestamp:    ts,
+				Action:       act,
+				FromFullSync: fullSync,
+			}
+		}
 	case appstate.IndexSettingDisableLinkPreviews:
 		eventToDispatch = &events.DisableLinkPreviews{
 			Disabled:     mutation.Action.GetPrivacySettingDisableLinkPreviewsAction().GetIsPreviewsDisabled(),

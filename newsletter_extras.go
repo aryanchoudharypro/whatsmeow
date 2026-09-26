@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
@@ -30,10 +31,23 @@ const (
 // by the server, so the vote is the SHA-256 of each chosen option's name
 // rather than an encrypted poll update. An empty optionNames takes the vote
 // back.
+//
+// Option names must be exactly as the poll lists them: they carry variation
+// selectors and ZWJ sequences, and any change gives a different hash.
 func (cli *Client) NewsletterSendPollVote(ctx context.Context, jid types.JID, serverID types.MessageServerID, optionNames []string) error {
+	if jid.Server != types.NewsletterServer {
+		return fmt.Errorf("%s is not a channel", jid)
+	} else if len(optionNames) > maxNewsletterPollVoteOptions {
+		return fmt.Errorf("too many options in vote (%d, max %d)", len(optionNames), maxNewsletterPollVoteOptions)
+	}
 	votes := make([]waBinary.Node, len(optionNames))
+	seen := make(map[[32]byte]struct{}, len(optionNames))
 	for i, name := range optionNames {
 		hash := sha256.Sum256([]byte(name))
+		if _, dup := seen[hash]; dup {
+			return fmt.Errorf("option %q is in the vote twice", name)
+		}
+		seen[hash] = struct{}{}
 		votes[i] = waBinary.Node{Tag: "vote", Content: hash[:]}
 	}
 	return cli.sendNode(ctx, waBinary.Node{
@@ -49,6 +63,113 @@ func (cli *Client) NewsletterSendPollVote(ctx context.Context, jid types.JID, se
 			{Tag: "votes", Content: votes},
 		},
 	})
+}
+
+// WhatsApp Web's poll vote sender refuses more options than this.
+const maxNewsletterPollVoteOptions = 1000
+
+// NewsletterMyAddOns is our own reaction and poll vote on one channel post,
+// as the server recorded them.
+type NewsletterMyAddOns struct {
+	MessageServerID types.MessageServerID
+	// Reaction is nil when we haven't reacted to the post.
+	Reaction *NewsletterMyReaction
+	// PollVote is nil when we never voted in this poll. A vote we took back
+	// is still there, with no options: the server keeps the removal.
+	PollVote *NewsletterMyPollVote
+}
+
+// NewsletterMyReaction is our own reaction on a channel post.
+type NewsletterMyReaction struct {
+	Code      string
+	Timestamp time.Time
+}
+
+// NewsletterMyPollVote is our own vote in a channel poll.
+type NewsletterMyPollVote struct {
+	// Timestamp is when the selection was last sent.
+	Timestamp time.Time
+	// OptionHashes are the SHA-256 of each chosen option's name, the same
+	// keys NewsletterMessage.PollVotes counts by. Empty after taking the
+	// vote back.
+	OptionHashes [][32]byte
+}
+
+// GetNewsletterMyAddOns reads our own reactions and poll votes on a
+// channel's recent posts, as WhatsApp Web does when a channel opens. A
+// poll's counts are totals across every follower, so they can't say what we
+// picked; this is the server's record of it, whichever device voted.
+//
+// Only posts we have a reaction or vote on come back, at most limit of them.
+func (cli *Client) GetNewsletterMyAddOns(ctx context.Context, jid types.JID, limit int) ([]NewsletterMyAddOns, error) {
+	if jid.Server != types.NewsletterServer {
+		return nil, fmt.Errorf("%s is not a channel", jid)
+	}
+	resp, err := cli.sendIQ(ctx, infoQuery{
+		Namespace: "newsletter",
+		Type:      iqGet,
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:   "my_addons",
+			Attrs: waBinary.Attrs{"limit": limit, "jid": jid},
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	myAddOns, ok := resp.GetOptionalChildByTag("my_addons")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "my_addons", In: "newsletter add-ons response"}
+	}
+	return parseNewsletterMyAddOns(&myAddOns, jid)
+}
+
+// parseNewsletterMyAddOns reads the answer as strictly as WhatsApp Web does:
+// this is our own selection, and a vote read with one option dropped would
+// be a different vote, not an approximate one. Groups for other channels are
+// skipped, since a server ID only means something within its channel.
+func parseNewsletterMyAddOns(node *waBinary.Node, jid types.JID) ([]NewsletterMyAddOns, error) {
+	var out []NewsletterMyAddOns
+	for _, group := range node.GetChildrenByTag("messages") {
+		gag := group.AttrGetter()
+		channel := gag.JID("jid")
+		if !gag.OK() {
+			return nil, fmt.Errorf("add-on group has no channel: %w", gag.Error())
+		} else if channel != jid {
+			continue
+		}
+		for _, msg := range group.GetChildrenByTag("message") {
+			mag := msg.AttrGetter()
+			entry := NewsletterMyAddOns{MessageServerID: mag.Int("server_id")}
+			if reaction, ok := msg.GetOptionalChildByTag("reaction"); ok {
+				rag := reaction.AttrGetter()
+				entry.Reaction = &NewsletterMyReaction{Code: rag.String("code"), Timestamp: rag.UnixTime("t")}
+				if !rag.OK() {
+					return nil, fmt.Errorf("malformed reaction on post %d: %w", entry.MessageServerID, rag.Error())
+				}
+			}
+			if votes, ok := msg.GetOptionalChildByTag("votes"); ok {
+				vag := votes.AttrGetter()
+				vote := &NewsletterMyPollVote{Timestamp: vag.UnixTime("t")}
+				if !vag.OK() {
+					return nil, fmt.Errorf("malformed vote on post %d: %w", entry.MessageServerID, vag.Error())
+				}
+				for _, v := range votes.GetChildrenByTag("vote") {
+					hash, ok := v.Content.([]byte)
+					if !ok || len(hash) != 32 {
+						return nil, fmt.Errorf("vote on post %d is not a 32-byte option hash", entry.MessageServerID)
+					}
+					vote.OptionHashes = append(vote.OptionHashes, [32]byte(hash))
+				}
+				entry.PollVote = vote
+			}
+			if !mag.OK() {
+				return nil, fmt.Errorf("malformed add-on post: %w", mag.Error())
+			}
+			out = append(out, entry)
+		}
+	}
+	return out, nil
 }
 
 type respNewsletterPins struct {

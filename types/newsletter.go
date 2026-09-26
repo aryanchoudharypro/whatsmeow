@@ -230,6 +230,9 @@ type NewsletterMessage struct {
 	// PollVotes are a channel poll's vote counts, keyed by the SHA-256 of
 	// each option's name.
 	PollVotes map[[32]byte]int
+	// ForwardsCount is how many times the post was forwarded, or 0 when the
+	// server didn't say. Live updates carry it along with the other counts.
+	ForwardsCount int
 
 	// This is only present when fetching messages, not in live updates
 	Message *waE2E.Message

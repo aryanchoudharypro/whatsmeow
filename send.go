@@ -236,6 +236,9 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	isBotMode := isInlineBotMode || to.IsBot()
 	needsMessageSecret := isBotMode || cli.shouldIncludeReportingToken(message)
 	var extraParams nodeExtraParams
+	// The secret of a message that mentions a bot, which stays on this device
+	// only (it isn't sent to the chat) but is needed to read the bot's reply.
+	var inlineBotSecret []byte
 
 	if needsMessageSecret {
 		if message.MessageContextInfo == nil {
@@ -262,27 +265,26 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		}
 
 		if isInlineBotMode {
-			// inline mode specific code
-			messageSecret := message.GetMessageContextInfo().GetMessageSecret()
-			message = &waE2E.Message{
-				BotInvokeMessage: &waE2E.FutureProofMessage{
-					Message: &waE2E.Message{
-						ExtendedTextMessage: message.ExtendedTextMessage,
-						MessageContextInfo: &waE2E.MessageContextInfo{
-							BotMetadata: message.MessageContextInfo.BotMetadata,
-						},
-					},
-				},
-				MessageContextInfo: message.MessageContextInfo,
+			// Mentioning a bot in a chat, the way WA Web does it
+			// (WAWebSendTextMsgChatAction, WAWebE2EProtoGenerator,
+			// WAWebSendGroupSkmsgJob): the chat gets the message as it is,
+			// minus its secret, and the bot gets its own copy with the
+			// secret swapped for the derived bot secret and the mentions
+			// written as push names.
+			inlineBotSecret = message.GetMessageContextInfo().GetMessageSecret()
+			message = proto.Clone(message).(*waE2E.Message)
+			message.MessageContextInfo.MessageSecret = nil
+			// With the secret gone there is no <reporting> token to go with it.
+			message.MessageContextInfo.ReportingTokenVersion = nil
+			if message.MessageContextInfo.BotMetadata.CapabilityMetadata == nil {
+				message.MessageContextInfo.BotMetadata.CapabilityMetadata = &waAICommon.BotCapabilityMetadata{
+					Capabilities: inlineBotCapabilities,
+				}
 			}
 
-			botMessage := &waE2E.Message{
-				BotInvokeMessage: message.BotInvokeMessage,
-				MessageContextInfo: &waE2E.MessageContextInfo{
-					BotMetadata:      message.MessageContextInfo.BotMetadata,
-					BotMessageSecret: applyBotMessageHKDF(messageSecret),
-				},
-			}
+			botMessage := proto.Clone(message).(*waE2E.Message)
+			botMessage.MessageContextInfo.BotMessageSecret = applyBotMessageHKDF(inlineBotSecret)
+			cli.prepareInlineBotCopy(ctx, botMessage)
 
 			messagePlaintext, _, marshalErr := marshalMessage(req.InlineBotJID, botMessage)
 			if marshalErr != nil {
@@ -399,8 +401,11 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		}
 	}
 
-	if message.GetMessageContextInfo().GetMessageSecret() != nil {
-		err = cli.Store.MsgSecrets.PutMessageSecret(ctx, to, ownID, req.ID, message.GetMessageContextInfo().GetMessageSecret())
+	if secret := message.GetMessageContextInfo().GetMessageSecret(); secret != nil || inlineBotSecret != nil {
+		if secret == nil {
+			secret = inlineBotSecret
+		}
+		err = cli.Store.MsgSecrets.PutMessageSecret(ctx, to, ownID, req.ID, secret)
 		if err != nil {
 			cli.Log.Warnf("Failed to store message secret key for outgoing message %s: %v", req.ID, err)
 		} else {

@@ -377,6 +377,19 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 			extraParams.metaNode.Attrs["thread_msg_sender_jid"] = req.Meta.ThreadMessageSenderJID
 		}
 	}
+	// A member label change says so in <meta> (WA Web's genMetaNode), or the
+	// server doesn't treat it as one.
+	if pm := message.GetProtocolMessage(); pm.GetType() == waE2E.ProtocolMessage_GROUP_MEMBER_LABEL_CHANGE && pm.GetMemberLabel() != nil {
+		if extraParams.metaNode == nil {
+			extraParams.metaNode = &waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{}}
+		}
+		reason := "user_update"
+		if pm.GetMemberLabel().GetLabel() == "" {
+			reason = "user_delete"
+		}
+		extraParams.metaNode.Attrs["appdata"] = "member_tag"
+		extraParams.metaNode.Attrs["tag_reason"] = reason
+	}
 
 	if req.AdditionalNodes != nil {
 		extraParams.additionalNodes = req.AdditionalNodes

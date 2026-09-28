@@ -16,7 +16,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-func TestHistorySyncDownloadsOverlapButDispatchInOrder(t *testing.T) {
+func TestHistorySyncDownloadsDispatchInOrder(t *testing.T) {
 	cli := NewClient(&store.Device{}, waLog.Noop)
 	cli.BackgroundEventCtx = context.Background()
 
@@ -67,8 +67,8 @@ func TestHistorySyncDownloadsOverlapButDispatchInOrder(t *testing.T) {
 			t.Fatalf("dispatch order %v, want 0..%d", order, chunks-1)
 		}
 	}
-	if p := peak.Load(); p < 2 || p > historySyncParallelDownloads {
-		t.Fatalf("peak concurrent downloads %d, want 2..%d", p, historySyncParallelDownloads)
+	if p := peak.Load(); p < min(2, historySyncParallelDownloads) || p > historySyncParallelDownloads {
+		t.Fatalf("peak concurrent downloads %d, want at most %d", p, historySyncParallelDownloads)
 	}
 }
 

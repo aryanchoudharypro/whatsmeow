@@ -12,8 +12,10 @@ import (
 
 // historySyncParallelDownloads is how many history sync blobs are fetched at
 // once when the phone has sent several notifications. They are still
-// dispatched one at a time, in the order the notifications arrived.
-const historySyncParallelDownloads = 3
+// dispatched one at a time, in the order the notifications arrived. Kept at
+// 1 (one download at a time, as upstream does) while a sync that stops early
+// is being narrowed down.
+const historySyncParallelDownloads = 1
 
 // historySyncDownload is one notification's blob being fetched and parsed.
 type historySyncDownload struct {
@@ -56,8 +58,7 @@ func (cli *Client) startHistorySyncDownload(ctx context.Context, notif *waE2E.Hi
 }
 
 // finishHistorySyncDownload dispatches a fetched chunk (or a status-only
-// notification) and then deletes the chunk's blob from the media server. The delete runs on its own so the next chunk
-// doesn't wait on that round trip.
+// notification) and then deletes the chunk's blob from the media server.
 func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyncDownload) {
 	if dl.statusOnly {
 		cli.Log.Infof("Received history sync status (type %s, chunk %d, progress %d, complete access %v)",
@@ -72,10 +73,8 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 	}
 	cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif})
 	notif := dl.notif
-	go func() {
-		err := cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
-		if err != nil {
-			cli.Log.Warnf("Failed to delete history sync media from server: %v", err)
-		}
-	}()
+	err := cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
+	if err != nil {
+		cli.Log.Warnf("Failed to delete history sync media from server: %v", err)
+	}
 }

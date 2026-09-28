@@ -32,6 +32,7 @@ import (
 	"go.mau.fi/whatsmeow/appstate"
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/proto/waWeb"
 	"go.mau.fi/whatsmeow/socket"
@@ -105,6 +106,7 @@ type Client struct {
 
 	historySyncNotifications        chan *waE2E.HistorySyncNotification
 	historySyncHandlerStarted       atomic.Bool
+	historySyncDownloader           func(context.Context, *waE2E.HistorySyncNotification, bool) (*waHistorySync.HistorySync, error)
 	ManualHistorySyncDownload       bool
 	DisableManualHistorySyncReceipt bool
 

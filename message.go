@@ -726,20 +726,33 @@ func (cli *Client) handleHistorySyncNotificationLoop() {
 		}
 	}()
 	ctx := cli.BackgroundEventCtx
+	// Downloads run ahead of dispatch (see historysync_pipeline.go), so a
+	// backlog of notifications is fetched in parallel rather than one blob at
+	// a time, while handlers still see chunks in the phone's order.
+	var inFlight []*historySyncDownload
 	for {
+		if len(inFlight) >= historySyncParallelDownloads {
+			<-inFlight[0].done
+			cli.finishHistorySyncDownload(ctx, inFlight[0])
+			inFlight[0] = nil
+			inFlight = inFlight[1:]
+			continue
+		}
+		var headDone <-chan struct{}
+		var idle <-chan time.Time
+		if len(inFlight) > 0 {
+			headDone = inFlight[0].done
+		} else {
+			idle = time.After(1 * time.Minute)
+		}
 		select {
 		case notif := <-cli.historySyncNotifications:
-			blob, err := cli.DownloadHistorySync(ctx, notif, false)
-			if err != nil {
-				cli.Log.Errorf("Failed to download history sync: %v", err)
-			} else {
-				cli.dispatchEvent(&events.HistorySync{Data: blob, Notification: notif})
-				err = cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
-				if err != nil {
-					cli.Log.Warnf("Failed to delete history sync media from server: %v", err)
-				}
-			}
-		case <-time.After(1 * time.Minute):
+			inFlight = append(inFlight, cli.startHistorySyncDownload(ctx, notif))
+		case <-headDone:
+			cli.finishHistorySyncDownload(ctx, inFlight[0])
+			inFlight[0] = nil
+			inFlight = inFlight[1:]
+		case <-idle:
 			return
 		}
 	}

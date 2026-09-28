@@ -1018,6 +1018,12 @@ func (cli *Client) parseGroupNode(groupNode *waBinary.Node) (*types.GroupInfo, e
 			if _, ok := child.Attrs["trigger"]; !ok {
 				group.LimitSharingTrigger = -1
 			}
+		case "no_frequently_forwarded":
+			group.NoFrequentlyForwarded = true
+		case "allow_admin_reports":
+			group.AllowAdminReports = true
+		case "group_history":
+			group.HasGroupHistory = true
 		default:
 			cli.Log.Debugf("Unknown element in group node %s: %s", group.JID.String(), &child)
 		}

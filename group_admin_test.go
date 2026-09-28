@@ -47,3 +47,26 @@ func TestBuildGroupMemberLabel(t *testing.T) {
 		t.Fatalf("label message = %v", pm)
 	}
 }
+
+func TestParseGroupModerationSettings(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	node := &waBinary.Node{Tag: "group", Attrs: waBinary.Attrs{"id": "123"}, Content: []waBinary.Node{
+		{Tag: "no_frequently_forwarded"},
+		{Tag: "allow_admin_reports"},
+		{Tag: "group_history"},
+	}}
+	info, err := cli.parseGroupNode(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.NoFrequentlyForwarded || !info.AllowAdminReports || !info.HasGroupHistory {
+		t.Fatalf("moderation = %+v", info.GroupModeration)
+	}
+	info, err = cli.parseGroupNode(&waBinary.Node{Tag: "group", Attrs: waBinary.Attrs{"id": "123"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.GroupModeration != (types.GroupModeration{}) {
+		t.Fatalf("settings that weren't sent must read as off: %+v", info.GroupModeration)
+	}
+}

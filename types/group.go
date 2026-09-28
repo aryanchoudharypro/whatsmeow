@@ -36,6 +36,7 @@ type GroupInfo struct {
 	GroupIsDefaultSub
 	GroupSubGroupProperties
 	GroupMembershipApprovalMode
+	GroupModeration
 
 	AddressingMode     AddressingMode
 	GroupCreated       time.Time
@@ -49,6 +50,18 @@ type GroupInfo struct {
 
 	// Suspended indicates whether the group is currently paused/suspended.
 	Suspended bool
+}
+
+// GroupModeration holds the newer group settings admins manage (see
+// SetGroupNoFrequentlyForwarded, SetGroupAllowAdminReports and
+// SetGroupHistorySharing).
+type GroupModeration struct {
+	// NoFrequentlyForwarded restricts messages forwarded many times.
+	NoFrequentlyForwarded bool
+	// AllowAdminReports lets members report messages to the admins.
+	AllowAdminReports bool
+	// HasGroupHistory shares recent history with people added to the group.
+	HasGroupHistory bool
 }
 
 type GroupMembershipApprovalMode struct {

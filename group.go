@@ -1026,6 +1026,10 @@ func (cli *Client) parseGroupNode(groupNode *waBinary.Node) (*types.GroupInfo, e
 			group.AllowAdminReports = true
 		case "group_history":
 			group.HasGroupHistory = true
+		case "member_link_mode":
+			group.MemberLinkMode = types.GroupMemberLinkMode(groupNodeText(&child))
+		case "member_share_group_history_mode":
+			group.MemberShareHistoryMode = types.GroupMemberShareHistoryMode(groupNodeText(&child))
 		default:
 			cli.Log.Debugf("Unknown element in group node %s: %s", group.JID.String(), &child)
 		}

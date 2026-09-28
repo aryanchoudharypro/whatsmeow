@@ -123,3 +123,15 @@ func (cli *Client) BuildGroupMemberLabel(label string) *waE2E.Message {
 		},
 	}
 }
+
+// groupNodeText is a group setting element's text, which arrives as bytes or,
+// when it's a dictionary token, as a string.
+func groupNodeText(node *waBinary.Node) string {
+	switch content := node.Content.(type) {
+	case []byte:
+		return string(content)
+	case string:
+		return content
+	}
+	return ""
+}

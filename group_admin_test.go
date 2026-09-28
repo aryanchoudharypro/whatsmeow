@@ -71,6 +71,22 @@ func TestParseGroupModerationSettings(t *testing.T) {
 	}
 }
 
+func TestParseGroupLinkAndHistoryModes(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	node := &waBinary.Node{Tag: "group", Attrs: waBinary.Attrs{"id": "123"}, Content: []waBinary.Node{
+		{Tag: "member_link_mode", Content: []byte("admin_link")},
+		{Tag: "member_share_group_history_mode", Content: "all_member_share"},
+	}}
+	info, err := cli.parseGroupNode(node)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.MemberLinkMode != types.GroupMemberLinkModeAdmin ||
+		info.MemberShareHistoryMode != types.GroupMemberShareHistoryModeAllMember {
+		t.Fatalf("link mode %q, history mode %q", info.MemberLinkMode, info.MemberShareHistoryMode)
+	}
+}
+
 func TestParseParticipantLabel(t *testing.T) {
 	member := types.NewJID("111", types.HiddenUserServer)
 	node := waBinary.Node{Tag: "participant", Attrs: waBinary.Attrs{

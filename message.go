@@ -803,14 +803,18 @@ func (cli *Client) DownloadHistorySync(ctx context.Context, notif *waE2E.History
 		return nil, fmt.Errorf("failed to download: %w", err)
 	}
 	var historySync waHistorySync.HistorySync
+	var rawLen int
 	if reader, err := zlib.NewReader(bytes.NewReader(data)); err != nil {
 		return nil, fmt.Errorf("failed to prepare to decompress: %w", err)
 	} else if rawData, err := io.ReadAll(reader); err != nil {
 		return nil, fmt.Errorf("failed to decompress: %w", err)
 	} else if err = proto.Unmarshal(rawData, &historySync); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal: %w", err)
+	} else {
+		rawLen = len(rawData)
 	}
 	cli.Log.Debugf("Received history sync (type %s, chunk %d, progress %d)", historySync.GetSyncType(), historySync.GetChunkOrder(), historySync.GetProgress())
+	cli.Log.Infof("History sync blob: %s", describeHistorySyncBlob(notif, &historySync, len(data), rawLen))
 	doStorage := func(ctx context.Context) {
 		if err := cli.storeNCTSalt(ctx, historySync.GetNctSalt()); err != nil {
 			cli.Log.Warnf("Failed to store NCT salt from history sync: %v", err)

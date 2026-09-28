@@ -152,6 +152,8 @@ type Client struct {
 	offlineSyncDone      atomic.Bool
 	offlineBatch         offlineBatchState
 	resendLimiter        resendLimiter
+	presenceSubs         map[types.JID]struct{}
+	presenceSubsLock     sync.Mutex
 	userDevicesCache     map[types.JID]deviceCache
 	userDevicesCacheLock sync.Mutex
 

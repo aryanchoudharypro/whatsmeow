@@ -17,6 +17,7 @@ import (
 const (
 	ABPropChannelsPinAdminEnabled    = 29516 // channels_message_pin_admin_enabled
 	ABPropChannelsPinFollowerEnabled = 29517 // channels_message_pin_follower_enabled
+	ABPropSpamReportWithPrivacyToken = 4991  // enable_spam_report_iq_with_privacy_token
 )
 
 // ABProps are the server's feature flags for this account: config code to

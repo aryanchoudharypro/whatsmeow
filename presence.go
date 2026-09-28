@@ -121,7 +121,79 @@ func (cli *Client) SubscribePresence(ctx context.Context, jid types.JID) error {
 			Content: privacyToken,
 		}}
 	}
-	return cli.sendNode(ctx, req)
+	if err = cli.sendNode(ctx, req); err != nil {
+		return err
+	}
+	cli.trackPresenceSubscription(jid, true)
+	return nil
+}
+
+// UnsubscribePresence stops presence updates for the given user, and stops
+// them being renewed on reconnect.
+func (cli *Client) UnsubscribePresence(ctx context.Context, jid types.JID) error {
+	if cli == nil {
+		return ErrClientIsNil
+	}
+	cli.trackPresenceSubscription(jid, false)
+	return cli.sendNode(ctx, waBinary.Node{
+		Tag: "presence",
+		Attrs: waBinary.Attrs{
+			"type": "unsubscribe",
+			"to":   jid,
+		},
+	})
+}
+
+// The server forgets presence subscriptions whenever the connection drops, so
+// every subscription is remembered and renewed after each reconnect - without
+// that, presence and typing updates silently stopped after the first network
+// blip. Ported from whatsapp-rust's presence subscription tracking.
+func (cli *Client) trackPresenceSubscription(jid types.JID, subscribed bool) {
+	jid = jid.ToNonAD()
+	cli.presenceSubsLock.Lock()
+	defer cli.presenceSubsLock.Unlock()
+	if subscribed {
+		if cli.presenceSubs == nil {
+			cli.presenceSubs = make(map[types.JID]struct{})
+		}
+		cli.presenceSubs[jid] = struct{}{}
+	} else {
+		delete(cli.presenceSubs, jid)
+	}
+}
+
+func (cli *Client) isPresenceSubscriptionTracked(jid types.JID) bool {
+	cli.presenceSubsLock.Lock()
+	defer cli.presenceSubsLock.Unlock()
+	_, ok := cli.presenceSubs[jid.ToNonAD()]
+	return ok
+}
+
+// resubscribePresences renews every remembered presence subscription on a
+// fresh connection.
+func (cli *Client) resubscribePresences(ctx context.Context) {
+	cli.presenceSubsLock.Lock()
+	jids := make([]types.JID, 0, len(cli.presenceSubs))
+	for jid := range cli.presenceSubs {
+		jids = append(jids, jid)
+	}
+	cli.presenceSubsLock.Unlock()
+	if len(jids) == 0 {
+		return
+	}
+	cli.Log.Debugf("Re-subscribing to presence of %d users", len(jids))
+	for _, jid := range jids {
+		if !cli.IsConnected() {
+			return
+		}
+		// An unsubscribe that landed mid-walk must not be undone.
+		if !cli.isPresenceSubscriptionTracked(jid) {
+			continue
+		}
+		if err := cli.SubscribePresence(ctx, jid); err != nil {
+			cli.Log.Debugf("Failed to re-subscribe to presence of %s: %v", jid, err)
+		}
+	}
 }
 
 // SendChatPresence updates the user's typing status in a specific chat.

@@ -21,10 +21,23 @@ type historySyncDownload struct {
 	done  chan struct{}
 	blob  *waHistorySync.HistorySync
 	err   error
+	// statusOnly is a notification with nothing to download.
+	statusOnly bool
+}
+
+// historySyncHasBlob reports whether a notification points at history to
+// download (or carries it inline), as opposed to only a status.
+func historySyncHasBlob(notif *waE2E.HistorySyncNotification) bool {
+	return notif.GetDirectPath() != "" || len(notif.GetInitialHistBootstrapInlinePayload()) > 0
 }
 
 func (cli *Client) startHistorySyncDownload(ctx context.Context, notif *waE2E.HistorySyncNotification) *historySyncDownload {
 	dl := &historySyncDownload{notif: notif, done: make(chan struct{})}
+	if !historySyncHasBlob(notif) {
+		dl.statusOnly = true
+		close(dl.done)
+		return dl
+	}
 	download := cli.DownloadHistorySync
 	if cli.historySyncDownloader != nil {
 		download = cli.historySyncDownloader
@@ -42,10 +55,17 @@ func (cli *Client) startHistorySyncDownload(ctx context.Context, notif *waE2E.Hi
 	return dl
 }
 
-// finishHistorySyncDownload dispatches a fetched chunk and then deletes its
-// blob from the media server. The delete runs on its own so the next chunk
+// finishHistorySyncDownload dispatches a fetched chunk (or a status-only
+// notification) and then deletes the chunk's blob from the media server. The delete runs on its own so the next chunk
 // doesn't wait on that round trip.
 func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyncDownload) {
+	if dl.statusOnly {
+		cli.Log.Infof("Received history sync status (type %s, chunk %d, progress %d, complete access %v)",
+			dl.notif.GetSyncType(), dl.notif.GetChunkOrder(), dl.notif.GetProgress(),
+			dl.notif.GetMessageAccessStatus().GetCompleteAccessGranted())
+		cli.dispatchEvent(&events.HistorySyncStatus{Notification: dl.notif})
+		return
+	}
 	if dl.err != nil {
 		cli.Log.Errorf("Failed to download history sync: %v", dl.err)
 		return

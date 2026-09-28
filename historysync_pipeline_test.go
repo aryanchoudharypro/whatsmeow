@@ -52,7 +52,7 @@ func TestHistorySyncDownloadsOverlapButDispatchInOrder(t *testing.T) {
 	})
 
 	for i := range chunks {
-		cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(uint32(i))}
+		cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(uint32(i)), DirectPath: proto.String("/v/t62/history")}
 	}
 	cli.historySyncHandlerStarted.Store(true)
 	go cli.handleHistorySyncNotificationLoop()
@@ -87,8 +87,8 @@ func TestHistorySyncFailedDownloadDoesNotBlockLaterChunks(t *testing.T) {
 			got <- hs.Data.GetChunkOrder()
 		}
 	})
-	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(0)}
-	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(1)}
+	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(0), DirectPath: proto.String("/v/t62/history")}
+	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(1), DirectPath: proto.String("/v/t62/history")}
 	cli.historySyncHandlerStarted.Store(true)
 	go cli.handleHistorySyncNotificationLoop()
 	select {
@@ -98,5 +98,35 @@ func TestHistorySyncFailedDownloadDoesNotBlockLaterChunks(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("a failed download held up the next chunk")
+	}
+}
+
+func TestHistorySyncStatusNotificationIsNotDownloaded(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	cli.BackgroundEventCtx = context.Background()
+	cli.historySyncDownloader = func(context.Context, *waE2E.HistorySyncNotification, bool) (*waHistorySync.HistorySync, error) {
+		t.Error("a status-only notification was downloaded")
+		return nil, nil
+	}
+	got := make(chan *events.HistorySyncStatus, 1)
+	cli.AddEventHandler(func(evt any) {
+		if st, ok := evt.(*events.HistorySyncStatus); ok {
+			got <- st
+		}
+	})
+	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{
+		SyncType:            waE2E.HistorySyncType_MESSAGE_ACCESS_STATUS.Enum(),
+		MessageAccessStatus: &waE2E.HistorySyncMessageAccessStatus{CompleteAccessGranted: proto.Bool(false)},
+	}
+	cli.historySyncHandlerStarted.Store(true)
+	go cli.handleHistorySyncNotificationLoop()
+	select {
+	case st := <-got:
+		if st.Notification.GetSyncType() != waE2E.HistorySyncType_MESSAGE_ACCESS_STATUS ||
+			st.Notification.GetMessageAccessStatus().GetCompleteAccessGranted() {
+			t.Fatalf("status %v", st.Notification)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no status event")
 	}
 }

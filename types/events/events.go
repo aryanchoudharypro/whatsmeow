@@ -279,6 +279,15 @@ type HistorySync struct {
 	Notification *waE2E.HistorySyncNotification
 }
 
+// HistorySyncStatus is emitted for a history sync notification that carries
+// no blob to download: MESSAGE_ACCESS_STATUS, which says whether the phone
+// granted this device complete access to its message history
+// (Notification.MessageAccessStatus), and NO_HISTORY, when the phone shares
+// none.
+type HistorySyncStatus struct {
+	Notification *waE2E.HistorySyncNotification
+}
+
 type DecryptFailMode string
 
 const (

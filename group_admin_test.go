@@ -70,3 +70,18 @@ func TestParseGroupModerationSettings(t *testing.T) {
 		t.Fatalf("settings that weren't sent must read as off: %+v", info.GroupModeration)
 	}
 }
+
+func TestParseParticipantLabel(t *testing.T) {
+	member := types.NewJID("111", types.HiddenUserServer)
+	node := waBinary.Node{Tag: "participant", Attrs: waBinary.Attrs{
+		"jid": member, "participant_label": "Treasurer", "participant_label_mtime": "1700000000",
+	}}
+	p := parseParticipant(node.AttrGetter(), &node)
+	if p.Label != "Treasurer" || p.LabelSetAt.Unix() != 1700000000 {
+		t.Fatalf("participant = %+v", p)
+	}
+	plain := waBinary.Node{Tag: "participant", Attrs: waBinary.Attrs{"jid": member}}
+	if p := parseParticipant(plain.AttrGetter(), &plain); p.Label != "" || !p.LabelSetAt.IsZero() {
+		t.Fatalf("a member without a tag has none: %+v", p)
+	}
+}

@@ -77,14 +77,19 @@ func (cli *Client) handleIB(ctx context.Context, node *waBinary.Node) {
 		case "downgrade_webclient":
 			go cli.dispatchEvent(&events.QRScannedWithoutMultidevice{})
 		case "offline_preview":
+			total := ag.Int("count")
 			cli.dispatchEvent(&events.OfflineSyncPreview{
-				Total:          ag.Int("count"),
+				Total:          total,
 				AppDataChanges: ag.Int("appdata"),
 				Messages:       ag.Int("message"),
 				Notifications:  ag.Int("notification"),
 				Receipts:       ag.Int("receipt"),
 			})
+			if total > 0 {
+				cli.startOfflineBatches(ctx, total)
+			}
 		case "offline":
+			cli.stopOfflineBatches()
 			cli.offlineSyncDone.Store(true)
 			cli.dispatchEvent(&events.OfflineSyncCompleted{
 				Count: ag.Int("count"),

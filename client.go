@@ -150,6 +150,7 @@ type Client struct {
 	// offlineSyncDone is set once the server has delivered everything that
 	// arrived while we were offline, on the current connection.
 	offlineSyncDone      atomic.Bool
+	offlineBatch         offlineBatchState
 	userDevicesCache     map[types.JID]deviceCache
 	userDevicesCacheLock sync.Mutex
 
@@ -604,6 +605,7 @@ func (cli *Client) onDisconnect(ctx context.Context, ns *socket.NoiseSocket, rem
 	defer cli.socketLock.Unlock()
 	if cli.socket == ns {
 		cli.socket = nil
+		cli.stopOfflineBatches()
 		cli.clearResponseWaiters(xmlStreamEndNode)
 		if !cli.isExpectedDisconnect() && (cli.forceAutoReconnect.Swap(false) || remote) {
 			cli.Log.Debugf("Emitting Disconnected event")
@@ -718,6 +720,7 @@ func (cli *Client) unlockedDisconnect() {
 		cli.socket = nil
 		cli.clearResponseWaiters(xmlStreamEndNode)
 	}
+	cli.stopOfflineBatches()
 	if cli.handlerQueueWait != nil {
 		select {
 		case <-cli.handlerQueueWait:
@@ -932,6 +935,9 @@ Loop:
 			if connCtx.Err() != nil {
 				cli.Log.Debugf("Closing handler queue loop before node handling")
 				return
+			}
+			if _, ok := node.Attrs["offline"]; ok {
+				cli.noteOfflineStanza(evtCtx)
 			}
 			doneChan := make(chan struct{})
 			start := time.Now()

@@ -243,6 +243,13 @@ func (cli *Client) handleRetryReceipt(ctx context.Context, receipt *events.Recei
 		cli.Log.Warnf("Dropping retry request from %s for %s: internal retry counter is %d", messageID, receipt.Sender, internalCounter)
 		return nil
 	}
+	// Groups only: the requester gets a fresh sender key with any later
+	// message, and asks for this one again on its own timer. A 1:1 chat has
+	// no such fallback, so its resend is never dropped.
+	if receipt.IsGroup && !cli.resendLimiter.allow(receipt.Chat, time.Now()) {
+		cli.Log.Debugf("Throttling resend of %s to %s: per-chat resend rate cap reached", messageID, receipt.Chat)
+		return nil
+	}
 
 	var fbSKDM *waMsgTransport.MessageTransport_Protocol_Ancillary_SenderKeyDistributionMessage
 	var fbDSM *waMsgTransport.MessageTransport_Protocol_Integral_DeviceSentMessage

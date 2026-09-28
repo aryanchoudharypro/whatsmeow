@@ -16,30 +16,22 @@ type TextEntity struct {
 	Metadata TextEntityMetadata `json:"metadata"`
 }
 
-type textEntityMetaType struct {
+type textEntityWrapper struct {
 	Key      string          `json:"key"`
 	Metadata json.RawMessage `json:"metadata"`
 }
 
 func (te *TextEntity) UnmarshalJSON(data []byte) error {
-	var metaType textEntityMetaType
-	if err := json.Unmarshal(data, &metaType); err != nil {
+	var wrapper textEntityWrapper
+	if err := json.Unmarshal(data, &wrapper); err != nil {
 		return err
 	}
-	te.Key = metaType.Key
-
-	// Unmarshaling the concrete metadata type from just its own sub-object,
-	// via the same helper primitive.go/viewmodel.go use, rather than handing
-	// the full outer `data` back to json.Unmarshal(data, te)/(data, &te):
-	// either of those would find that *TextEntity (or **TextEntity, which
-	// json.Unmarshal dereferences down to it too) still implements
-	// Unmarshaler and call straight back into this method with the same
-	// bytes - unbounded recursion crashing the process with a stack
-	// overflow, which is what every metadata type in textEntityMetadataTypes
-	// used to do (an unrecognized type is the one case that never recursed,
-	// since unmarshalWithTypeName returns UnknownTextEntityMetadata for it
-	// without going through this method again).
-	val, err := unmarshalWithTypeName[UnknownTextEntityMetadata](metaType.Metadata, textEntityMetadataTypes)
+	te.Key = wrapper.Key
+	te.Metadata = nil
+	if len(wrapper.Metadata) == 0 || string(wrapper.Metadata) == "null" {
+		return nil
+	}
+	val, err := unmarshalWithTypeName[UnknownTextEntityMetadata](wrapper.Metadata, textEntityMetadataTypes)
 	if err != nil {
 		return err
 	}
@@ -65,19 +57,23 @@ func (*GenAILatexItem) isTextEntityMetadata()           {}
 func (UnknownTextEntityMetadata) isTextEntityMetadata() {}
 
 type GenAISearchCitationItem struct {
+	TypeName string `json:"__typename"`
 }
 
 type GenAIInlineLinkItem struct {
+	TypeName    string `json:"__typename"`
 	URL         string `json:"url"`
 	DisplayName string `json:"display_name"`
 }
 
 type GenAIDeepLinkItem struct {
+	TypeName    string `json:"__typename"`
 	DeepLinkURL string `json:"deeplink_url"`
 	Text        string `json:"text"`
 }
 
 type GenAILatexItem struct {
+	TypeName        string `json:"__typename"`
 	LatexExpression string `json:"latex_expression"`
 }
 

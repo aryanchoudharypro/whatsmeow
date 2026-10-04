@@ -195,7 +195,7 @@ func (device *Device) getLoginPayload() *waWa6.ClientPayload {
 	payload.Pull = proto.Bool(true)
 	payload.LidDbMigrated = proto.Bool(true)
 	if payload.Lc == nil {
-		payload.Lc = proto.Int32(1)
+		payload.Lc = proto.Int32(device.LoginCounter)
 	}
 	return payload
 }

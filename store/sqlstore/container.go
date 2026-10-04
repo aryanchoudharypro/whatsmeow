@@ -109,8 +109,30 @@ func (c *Container) Upgrade(ctx context.Context) error {
 		}
 	}
 
-	return c.db.Upgrade(ctx)
+	err := c.db.Upgrade(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = c.db.Exec(ctx, createConnStateTableQuery)
+	if err != nil {
+		return fmt.Errorf("failed to create connection state table: %w", err)
+	}
+	return nil
 }
+
+// The connection state table is created here rather than by a numbered
+// upgrade: this fork's upgrade numbers would collide with the ones upstream
+// adds later, and a database that already ran a fork upgrade under a number
+// would then skip upstream's.
+const createConnStateTableQuery = `
+CREATE TABLE IF NOT EXISTS whatsmeow_fork_conn_state (
+	our_jid TEXT,
+	key     TEXT,
+	value   bytea NOT NULL,
+
+	PRIMARY KEY (our_jid, key),
+	FOREIGN KEY (our_jid) REFERENCES whatsmeow_device(jid) ON DELETE CASCADE ON UPDATE CASCADE
+)`
 
 const getAllDevicesQuery = `
 SELECT jid, lid, registration_id, noise_key, identity_key,
@@ -196,6 +218,9 @@ const (
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		ON CONFLICT (jid) DO UPDATE
 			SET lid=excluded.lid,
+				signed_pre_key=excluded.signed_pre_key,
+				signed_pre_key_id=excluded.signed_pre_key_id,
+				signed_pre_key_sig=excluded.signed_pre_key_sig,
 				platform=excluded.platform,
 				business_name=excluded.business_name,
 				push_name=excluded.push_name,

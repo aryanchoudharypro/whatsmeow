@@ -1024,6 +1024,36 @@ func (s *SQLStore) DeleteNCTSalt(ctx context.Context) error {
 	return err
 }
 
+const (
+	putConnStateQuery = `
+		INSERT INTO whatsmeow_fork_conn_state (our_jid, key, value) VALUES ($1, $2, $3)
+		ON CONFLICT (our_jid, key) DO UPDATE SET value=excluded.value
+	`
+	getConnStateQuery    = `SELECT value FROM whatsmeow_fork_conn_state WHERE our_jid=$1 AND key=$2`
+	deleteConnStateQuery = `DELETE FROM whatsmeow_fork_conn_state WHERE our_jid=$1 AND key=$2`
+)
+
+func (s *SQLStore) GetConnState(ctx context.Context, key string) ([]byte, error) {
+	var value []byte
+	err := s.db.QueryRow(ctx, getConnStateQuery, s.JID, key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func (s *SQLStore) PutConnState(ctx context.Context, key string, value []byte) error {
+	var err error
+	if value == nil {
+		_, err = s.db.Exec(ctx, deleteConnStateQuery, s.JID, key)
+	} else {
+		_, err = s.db.Exec(ctx, putConnStateQuery, s.JID, key, value)
+	}
+	return err
+}
+
 func (s *SQLStore) DeleteExpiredPrivacyTokens(ctx context.Context, cutoff time.Time) (int64, error) {
 	res, err := s.db.Exec(ctx, deleteExpiredPrivacyTokens, s.JID, cutoff.Unix())
 	if err != nil {

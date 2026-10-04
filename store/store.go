@@ -167,6 +167,16 @@ type NCTSaltStore interface {
 	DeleteNCTSalt(ctx context.Context) error
 }
 
+// ConnStateStore keeps the small per-device values a client carries from one
+// connection to the next: the login counter, the edge routing hint, the
+// server's Noise certificate chain and the signed prekey rotation state.
+type ConnStateStore interface {
+	// GetConnState returns nil when nothing is stored under the key.
+	GetConnState(ctx context.Context, key string) ([]byte, error)
+	// PutConnState stores the value, or removes the key when it is nil.
+	PutConnState(ctx context.Context, key string, value []byte) error
+}
+
 type BufferedEvent struct {
 	Plaintext  []byte
 	InsertTime time.Time
@@ -214,6 +224,7 @@ type AllSessionSpecificStores interface {
 	MsgSecretStore
 	PrivacyTokenStore
 	NCTSaltStore
+	ConnStateStore
 	EventBuffer
 }
 
@@ -246,6 +257,15 @@ type Device struct {
 	LIDMigrationTimestamp int64
 	CompanionMetaNonce    string
 
+	// LoginCounter is sent as ClientPayload.lc on every login. The client
+	// loads it from ConnState before connecting and bumps it after each
+	// successful login, like WhatsApp Web's getLoginCounter.
+	LoginCounter int32
+	// OldSignedPreKeys are signed prekeys that were rotated out (or staged
+	// for a rotation). They are kept so messages encrypted against them
+	// still decrypt.
+	OldSignedPreKeys []*keys.PreKey
+
 	FacebookUUID uuid.UUID
 
 	Initialized   bool
@@ -261,6 +281,7 @@ type Device struct {
 	MsgSecrets    MsgSecretStore
 	PrivacyTokens PrivacyTokenStore
 	NCTSalt       NCTSaltStore
+	ConnState     ConnStateStore
 	EventBuffer   EventBuffer
 	LIDs          LIDStore
 	Container     DeviceContainer
@@ -320,6 +341,7 @@ func (device *Device) SetAllStores(store AllSessionSpecificStores) {
 	device.MsgSecrets = store
 	device.PrivacyTokens = store
 	device.NCTSalt = store
+	device.ConnState = store
 	device.EventBuffer = store
 }
 

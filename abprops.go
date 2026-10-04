@@ -6,6 +6,7 @@ package whatsmeow
 
 import (
 	"context"
+	"maps"
 	"strconv"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
@@ -50,6 +51,65 @@ func (cli *Client) GetABProps(ctx context.Context) (ABProps, error) {
 		return nil, err
 	}
 	return parseABProps(resp), nil
+}
+
+// CachedABProps returns the feature flags the client fetched when it last
+// connected, without asking the server. It is empty until the first fetch
+// after connecting has finished.
+func (cli *Client) CachedABProps() ABProps {
+	cli.abPropsLock.Lock()
+	defer cli.abPropsLock.Unlock()
+	return maps.Clone(cli.abPropsCache)
+}
+
+// refreshABProps fetches the feature flags after connecting, as WhatsApp Web
+// does on every connection. Once a full set is cached, later connections
+// send its hash and the server answers with only what changed.
+func (cli *Client) refreshABProps(ctx context.Context) {
+	cli.abPropsLock.Lock()
+	hash := cli.abPropsHash
+	seeded := cli.abPropsCache != nil
+	cli.abPropsLock.Unlock()
+
+	attrs := waBinary.Attrs{"protocol": "1"}
+	// A delta is only what changed, so it is useless without the full set
+	// it applies to.
+	if seeded && hash != "" {
+		attrs["hash"] = hash
+	}
+	resp, err := cli.sendIQ(ctx, infoQuery{
+		Namespace: "abt",
+		Type:      iqGet,
+		To:        types.ServerJID,
+		Content:   []waBinary.Node{{Tag: "props", Attrs: attrs}},
+	})
+	if err != nil {
+		cli.Log.Warnf("Failed to fetch AB props after connecting: %v", err)
+		return
+	}
+	cli.applyABProps(resp)
+}
+
+// applyABProps takes a props response into the cache: a full set replaces
+// it, a delta changes only the flags it names.
+func (cli *Client) applyABProps(resp *waBinary.Node) {
+	propsNode, ok := resp.GetOptionalChildByTag("props")
+	if !ok {
+		return
+	}
+	ag := propsNode.AttrGetter()
+	props := parseABProps(resp)
+
+	cli.abPropsLock.Lock()
+	defer cli.abPropsLock.Unlock()
+	if ag.OptionalBool("delta_update") && cli.abPropsCache != nil {
+		maps.Copy(cli.abPropsCache, props)
+	} else {
+		cli.abPropsCache = props
+	}
+	if newHash := ag.OptionalString("hash"); newHash != "" {
+		cli.abPropsHash = newHash
+	}
 }
 
 func parseABProps(resp *waBinary.Node) ABProps {

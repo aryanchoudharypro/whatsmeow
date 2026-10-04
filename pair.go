@@ -228,6 +228,7 @@ func (cli *Client) handlePair(ctx context.Context, deviceIdentityBytes []byte, r
 		cli.sendPairError(ctx, reqID, 500, "internal-error")
 		return &PairDatabaseError{"failed to save device store", err}
 	}
+	cli.initConnStateAfterPair(ctx)
 	cli.StoreLIDPNMapping(ctx, lid, jid)
 	err = cli.Store.Identities.PutIdentity(ctx, mainDeviceLID.SignalAddress().String(), mainDeviceIdentity)
 	if err != nil {

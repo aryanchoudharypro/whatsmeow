@@ -20,7 +20,9 @@ var (
 	// KeepAliveResponseDeadline specifies the duration to wait for a response to websocket keepalive pings.
 	KeepAliveResponseDeadline = 10 * time.Second
 	// KeepAliveIntervalMin specifies the minimum interval for websocket keepalive pings.
-	KeepAliveIntervalMin = 20 * time.Second
+	// WhatsApp Web pings every healthCheckInterval * (1 + random()), with an
+	// interval of 15 seconds, which is anywhere from 15 to 30 seconds.
+	KeepAliveIntervalMin = 15 * time.Second
 	// KeepAliveIntervalMax specifies the maximum interval for websocket keepalive pings.
 	KeepAliveIntervalMax = 30 * time.Second
 

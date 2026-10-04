@@ -143,6 +143,14 @@ func (device *Device) LoadSignedPreKey(ctx context.Context, signedPreKeyID uint3
 			ecc.NewDjbECPrivateKey(*device.SignedPreKey.Priv),
 		), *device.SignedPreKey.Signature, nil), nil
 	}
+	for _, old := range device.OldSignedPreKeys {
+		if old.KeyID == signedPreKeyID && old.Signature != nil {
+			return record.NewSignedPreKey(signedPreKeyID, 0, ecc.NewECKeyPair(
+				ecc.NewDjbECPublicKey(*old.Pub),
+				ecc.NewDjbECPrivateKey(*old.Priv),
+			), *old.Signature, nil), nil
+		}
+	}
 	return nil, nil
 }
 

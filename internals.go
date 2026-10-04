@@ -355,8 +355,8 @@ func (int *DangerousInternalClient) IsOwnJID(jid types.JID) bool {
 	return int.c.isOwnJID(jid)
 }
 
-func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair) (chan *waBinary.Node, error) {
-	return int.c.doHandshake(fs, ephemeralKP)
+func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair, serverStatic *[32]byte) (chan *waBinary.Node, *serverCertChain, error) {
+	return int.c.doHandshake(fs, ephemeralKP, serverStatic)
 }
 
 func (int *DangerousInternalClient) KeepAliveLoop(ctx, connCtx context.Context) {

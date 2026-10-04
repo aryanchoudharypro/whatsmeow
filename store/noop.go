@@ -37,6 +37,7 @@ var NoopDevice = &Device{
 	MsgSecrets:    nilStore,
 	PrivacyTokens: nilStore,
 	NCTSalt:       nilStore,
+	ConnState:     nilStore,
 	EventBuffer:   nilStore,
 	LIDs:          nilStore,
 	Container:     nilStore,
@@ -242,6 +243,14 @@ func (n *NoopStore) GetNCTSalt(ctx context.Context) ([]byte, error) {
 }
 
 func (n *NoopStore) DeleteNCTSalt(ctx context.Context) error {
+	return n.Error
+}
+
+func (n *NoopStore) GetConnState(ctx context.Context, key string) ([]byte, error) {
+	return nil, n.Error
+}
+
+func (n *NoopStore) PutConnState(ctx context.Context, key string, value []byte) error {
 	return n.Error
 }
 

@@ -257,6 +257,13 @@ type ConnectFailure struct {
 // ClientOutdated is emitted when the WhatsApp server rejects the connection with the ConnectFailureClientOutdated code.
 type ClientOutdated struct{}
 
+// ClientExpiration is emitted when the server announces the date after which
+// it expects to stop accepting this client version. A zero Expiration means
+// the server withdrew an earlier deadline.
+type ClientExpiration struct {
+	Expiration time.Time
+}
+
 type CATRefreshError struct {
 	Error error
 }

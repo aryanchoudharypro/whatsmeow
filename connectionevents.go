@@ -96,6 +96,23 @@ func (cli *Client) handleIB(ctx context.Context, node *waBinary.Node) {
 			})
 		case "dirty":
 			go cli.handleDirtyBit(child.AttrGetter().OptionalString("type"), child.AttrGetter().OptionalString("timestamp"))
+		case "edge_routing":
+			// Sent back ahead of the next handshake so the edge server can
+			// route the connection straight to where the account lives.
+			if routingInfo, ok := child.GetChildByTag("routing_info").Content.([]byte); ok {
+				cli.storeEdgeRouting(ctx, routingInfo)
+			}
+		case "client_expiration":
+			// The server naming the date it stops accepting this client
+			// version. Without a t, it withdraws an earlier deadline.
+			evt := &events.ClientExpiration{}
+			if _, hasTime := child.Attrs["t"]; hasTime {
+				evt.Expiration = ag.UnixTime("t")
+			}
+			if ag.OK() {
+				cli.Log.Warnf("Server announced a client expiration: %s", child.String())
+				go cli.dispatchEvent(evt)
+			}
 		}
 	}
 }
@@ -186,7 +203,9 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 		cli.StoreLIDPNMapping(ctx, cli.Store.GetLID(), cli.Store.GetJID())
 	}
 	cli.deleteExpiredPrivacyTokens()
+	cli.bumpLoginCounter(ctx)
 	go func() {
+		cli.sendUnifiedSession()
 		if dbCount, err := cli.Store.PreKeys.UploadedPreKeyCount(ctx); err != nil {
 			cli.Log.Errorf("Failed to get number of prekeys in database: %v", err)
 		} else if serverCount, err := cli.getServerPreKeyCount(ctx); err != nil {
@@ -206,6 +225,7 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 		cli.dispatchEvent(&events.Connected{})
 		cli.closeSocketWaitChan()
 		cli.resubscribePresences(ctx)
+		cli.runPostLoginTasks(ctx)
 	}()
 }
 

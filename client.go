@@ -114,6 +114,16 @@ type Client struct {
 	lastPreKeyUpload  time.Time
 	PreKeysUploaded   *exsync.Event
 
+	connState connState
+	// DisableConnectionResume makes every connection a full Noise XX
+	// handshake without the edge routing hint, instead of resuming the way
+	// WhatsApp Web does.
+	DisableConnectionResume bool
+
+	abPropsLock  sync.Mutex
+	abPropsCache ABProps
+	abPropsHash  string
+
 	mediaConnCache *MediaConn
 	mediaConnLock  sync.Mutex
 
@@ -575,22 +585,45 @@ func (cli *Client) unlockedConnect(ctx context.Context) error {
 	if cli.Store.ID == nil {
 		client = cli.preLoginHTTP
 	}
-	fs := socket.NewFrameSocket(cli.Log.Sub("Socket"), client)
-	if userAgent := cli.getUserAgent(); userAgent != "" {
-		fs.HTTPHeaders.Set("User-Agent", userAgent)
-	}
-	if cli.MessengerConfig != nil {
-		fs.URL = cli.MessengerConfig.WebsocketURL
-		fs.HTTPHeaders.Set("Origin", cli.MessengerConfig.BaseURL)
-	}
+	cli.loadConnState(ctx)
+	hints := cli.getResumeHints(ctx)
+	var fs *socket.FrameSocket
 	var queue chan *waBinary.Node
-	maps.Copy(fs.HTTPHeaders, cli.WebSocketHeaders)
-	if err := fs.Connect(ctx); err != nil {
+	for {
+		fs = socket.NewFrameSocket(cli.Log.Sub("Socket"), client)
+		if userAgent := cli.getUserAgent(); userAgent != "" {
+			fs.HTTPHeaders.Set("User-Agent", userAgent)
+		}
+		if cli.MessengerConfig != nil {
+			fs.URL = cli.MessengerConfig.WebsocketURL
+			fs.HTTPHeaders.Set("Origin", cli.MessengerConfig.BaseURL)
+		}
+		maps.Copy(fs.HTTPHeaders, cli.WebSocketHeaders)
+		if preIntro := socket.EdgeRoutingPreIntro(hints.edgeRouting); preIntro != nil {
+			// Only the connection header is part of the Noise prologue; the
+			// routing info is for the edge server in front of it.
+			fs.Header = append(preIntro, fs.Header...)
+		}
+		if err := fs.Connect(ctx); err != nil {
+			fs.Close(0)
+			return err
+		}
+		var chain *serverCertChain
+		var err error
+		queue, chain, err = cli.doHandshake(fs, *keys.NewKeyPair(), hints.serverStatic)
+		if err == nil {
+			cli.handshakeSucceeded(ctx, chain)
+			break
+		}
 		fs.Close(0)
-		return err
-	} else if queue, err = cli.doHandshake(fs, *keys.NewKeyPair()); err != nil {
-		fs.Close(0)
-		return fmt.Errorf("noise handshake failed: %w", err)
+		if !hints.any() || ctx.Err() != nil {
+			return fmt.Errorf("noise handshake failed: %w", err)
+		}
+		// Something reused from an earlier connection may be what broke
+		// this one, so try once more as a first connection would.
+		cli.Log.Warnf("Noise handshake with resume hints failed, retrying without them: %v", err)
+		cli.dropResumeHints(ctx, hints, err)
+		hints = resumeHints{}
 	}
 	closeWait := make(chan struct{})
 	cli.handlerQueueWait = closeWait

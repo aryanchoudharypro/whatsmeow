@@ -215,6 +215,20 @@ type TextStatus struct {
 type Blocklist struct {
 	DHash string // TODO is this just a timestamp?
 	JIDs  []JID
+	// Entries has the same users as JIDs, in the same order, with what else
+	// the server says about each.
+	Entries []BlocklistEntry
+}
+
+// BlocklistEntry is one blocked user. The server keys the list by LID and
+// gives the phone number alongside.
+type BlocklistEntry struct {
+	JID JID
+	// PN is the user's phone number JID, empty if the server didn't give one.
+	PN JID
+	// Active is false for a LID the phone number no longer goes by: one
+	// person can be listed under several LIDs, at most one of them active.
+	Active bool
 }
 
 // BusinessHoursConfig contains business operating hours of a WhatsApp business.

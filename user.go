@@ -1015,6 +1015,11 @@ func (cli *Client) parseBlocklist(node *waBinary.Node) *types.Blocklist {
 		}
 
 		output.JIDs = append(output.JIDs, blockedJID)
+		output.Entries = append(output.Entries, types.BlocklistEntry{
+			JID:    blockedJID,
+			PN:     ag.OptionalJIDOrEmpty("pn_jid"),
+			Active: ag.OptionalBool("active"),
+		})
 	}
 	return output
 }
@@ -1033,7 +1038,27 @@ func (cli *Client) GetBlocklist(ctx context.Context) (*types.Blocklist, error) {
 	if !ok {
 		return nil, &ElementMissingError{Tag: "list", In: "response to blocklist query"}
 	}
-	return cli.parseBlocklist(&list), nil
+	output := cli.parseBlocklist(&list)
+	cli.storeBlocklistLIDMappings(ctx, output)
+	return output, nil
+}
+
+// storeBlocklistLIDMappings learns LID-PN pairs from the blocklist, as
+// WhatsApp Web does. Only active entries: the rest pair a phone number with a
+// LID it has since left, which would overwrite the current one.
+func (cli *Client) storeBlocklistLIDMappings(ctx context.Context, list *types.Blocklist) {
+	var mappings []store.LIDMapping
+	for _, entry := range list.Entries {
+		if entry.Active && entry.JID.Server == types.HiddenUserServer && entry.PN.Server == types.DefaultUserServer {
+			mappings = append(mappings, store.LIDMapping{LID: entry.JID, PN: entry.PN})
+		}
+	}
+	if len(mappings) == 0 {
+		return
+	}
+	if err := cli.Store.LIDs.PutManyLIDMappings(ctx, mappings); err != nil {
+		cli.Log.Warnf("Failed to store LID mappings from blocklist: %v", err)
+	}
 }
 
 // UpdateBlocklist updates the user's block list and returns the updated list.

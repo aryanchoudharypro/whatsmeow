@@ -51,6 +51,7 @@ func (cli *Client) handleCallEvent(ctx context.Context, node *waBinary.Node) {
 	}
 	switch child.Tag {
 	case "offer":
+		cli.learnCallerLIDPN(ctx, basicMeta.From, &child)
 		cli.onCallOffer(ctx, &child, basicMeta, types.CallRemoteMeta{
 			RemotePlatform: ag.String("platform"),
 			RemoteVersion:  ag.String("version"),
@@ -115,6 +116,22 @@ func (cli *Client) handleCallEvent(ctx context.Context, node *waBinary.Node) {
 	default:
 		cli.dispatchEvent(&events.UnknownCallEvent{Node: node})
 	}
+}
+
+// learnCallerLIDPN stores the caller's LID-PN pair from an incoming offer, so a
+// call from someone only ever seen by LID can be shown under their number and
+// contact name. As in WhatsApp Web, the offer's caller_pn belongs to the outer
+// from address, whoever the call creator is, and an offer that carries a
+// username is left alone: that caller's number is not for the callee to keep.
+func (cli *Client) learnCallerLIDPN(ctx context.Context, from types.JID, offer *waBinary.Node) {
+	// Source of truth: https://github.com/oxidezap/whatsapp-rust/blob/b8f33086/src/handlers/call.rs (learn_offer_identity)
+	ag := offer.AttrGetter()
+	pn := ag.OptionalJIDOrEmpty("caller_pn")
+	if from.Server != types.HiddenUserServer || pn.Server != types.DefaultUserServer ||
+		from.User == "" || pn.User == "" || ag.OptionalString("username") != "" {
+		return
+	}
+	cli.StoreLIDPNMapping(ctx, from.ToNonAD(), pn.ToNonAD())
 }
 
 func (cli *Client) onCallOffer(ctx context.Context, child *waBinary.Node, meta types.BasicCallMeta, remote types.CallRemoteMeta) {

@@ -104,11 +104,21 @@ type Client struct {
 	appStateProc     *appstate.Processor
 	appStateSyncLock sync.Mutex
 
-	historySyncNotifications        chan *waE2E.HistorySyncNotification
+	historySyncNotifications        chan historySyncRequest
 	historySyncHandlerStarted       atomic.Bool
 	historySyncDownloader           func(context.Context, *waE2E.HistorySyncNotification, bool) (*waHistorySync.HistorySync, error)
+	historySyncReceiptSender        func(context.Context, types.MessageID) error
 	ManualHistorySyncDownload       bool
 	DisableManualHistorySyncReceipt bool
+	// AckHistorySyncAfterDispatch holds back the receipt for an automatically
+	// downloaded history sync chunk until its blob has been downloaded and
+	// every event handler has returned from the [events.HistorySync]. Once
+	// the phone has that receipt it never uploads the chunk again, so by
+	// default (receipt sent on arrival) a failed download loses that part of
+	// the history for good. With this set, a chunk that fails to download or
+	// whose handler fails is left unacknowledged and the phone uploads it
+	// again, so handlers may see a chunk more than once.
+	AckHistorySyncAfterDispatch bool
 
 	uploadPreKeysLock sync.Mutex
 	lastPreKeyUpload  time.Time
@@ -295,7 +305,7 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 
 		incomingRetryRequestCounter: make(map[incomingRetryKey]int),
 
-		historySyncNotifications: make(chan *waE2E.HistorySyncNotification, 32),
+		historySyncNotifications: make(chan historySyncRequest, 32),
 
 		tcTokenSenderTS:  make(map[types.JID]time.Time),
 		groupCache:       make(map[types.JID]*groupMetaCache),

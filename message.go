@@ -746,8 +746,8 @@ func (cli *Client) handleHistorySyncNotificationLoop() {
 			idle = time.After(1 * time.Minute)
 		}
 		select {
-		case notif := <-cli.historySyncNotifications:
-			inFlight = append(inFlight, cli.startHistorySyncDownload(ctx, notif))
+		case req := <-cli.historySyncNotifications:
+			inFlight = append(inFlight, cli.startHistorySyncDownload(ctx, req))
 		case <-headDone:
 			cli.finishHistorySyncDownload(ctx, inFlight[0])
 			inFlight[0] = nil
@@ -981,13 +981,20 @@ func (cli *Client) handleProtocolMessage(ctx context.Context, info *types.Messag
 	}
 
 	if protoMsg.GetHistorySyncNotification() != nil {
+		receiptDeferred := false
 		if !cli.ManualHistorySyncDownload {
-			cli.historySyncNotifications <- protoMsg.HistorySyncNotification
+			req := historySyncRequest{notif: protoMsg.HistorySyncNotification}
+			if cli.AckHistorySyncAfterDispatch {
+				// The download loop sends the receipt once the chunk is handled.
+				req.receiptID = info.ID
+				receiptDeferred = true
+			}
+			cli.historySyncNotifications <- req
 			if cli.historySyncHandlerStarted.CompareAndSwap(false, true) {
 				go cli.handleHistorySyncNotificationLoop()
 			}
 		}
-		if !(cli.ManualHistorySyncDownload && cli.DisableManualHistorySyncReceipt) {
+		if !receiptDeferred && !(cli.ManualHistorySyncDownload && cli.DisableManualHistorySyncReceipt) {
 			go func() {
 				err := cli.SendProtocolMessageReceipt(ctx, info.ID, types.ReceiptTypeHistorySync)
 				if err != nil {

@@ -7,6 +7,7 @@ import (
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
 
@@ -17,9 +18,19 @@ import (
 // is being narrowed down.
 const historySyncParallelDownloads = 1
 
+// historySyncRequest is a history sync notification queued for download.
+type historySyncRequest struct {
+	notif *waE2E.HistorySyncNotification
+	// receiptID is the notification's message ID when its receipt is still
+	// owed (see Client.AckHistorySyncAfterDispatch), empty if it was already
+	// sent on arrival.
+	receiptID types.MessageID
+}
+
 // historySyncDownload is one notification's blob being fetched and parsed.
 type historySyncDownload struct {
-	notif *waE2E.HistorySyncNotification
+	notif     *waE2E.HistorySyncNotification
+	receiptID types.MessageID
 	done  chan struct{}
 	blob  *waHistorySync.HistorySync
 	err   error
@@ -33,8 +44,9 @@ func historySyncHasBlob(notif *waE2E.HistorySyncNotification) bool {
 	return notif.GetDirectPath() != "" || len(notif.GetInitialHistBootstrapInlinePayload()) > 0
 }
 
-func (cli *Client) startHistorySyncDownload(ctx context.Context, notif *waE2E.HistorySyncNotification) *historySyncDownload {
-	dl := &historySyncDownload{notif: notif, done: make(chan struct{})}
+func (cli *Client) startHistorySyncDownload(ctx context.Context, req historySyncRequest) *historySyncDownload {
+	notif := req.notif
+	dl := &historySyncDownload{notif: notif, receiptID: req.receiptID, done: make(chan struct{})}
 	if !historySyncHasBlob(notif) {
 		dl.statusOnly = true
 		close(dl.done)
@@ -57,6 +69,23 @@ func (cli *Client) startHistorySyncDownload(ctx context.Context, notif *waE2E.Hi
 	return dl
 }
 
+// sendDeferredHistorySyncReceipt acknowledges a chunk whose receipt was held
+// back until it had been handled.
+func (cli *Client) sendDeferredHistorySyncReceipt(ctx context.Context, dl *historySyncDownload) {
+	if dl.receiptID == "" {
+		return
+	}
+	var err error
+	if cli.historySyncReceiptSender != nil {
+		err = cli.historySyncReceiptSender(ctx, dl.receiptID)
+	} else {
+		err = cli.SendProtocolMessageReceipt(ctx, dl.receiptID, types.ReceiptTypeHistorySync)
+	}
+	if err != nil {
+		cli.Log.Warnf("Failed to send acknowledgement for protocol message %s: %v", dl.receiptID, err)
+	}
+}
+
 // finishHistorySyncDownload dispatches a fetched chunk (or a status-only
 // notification) and then deletes the chunk's blob from the media server.
 func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyncDownload) {
@@ -65,13 +94,23 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 			dl.notif.GetSyncType(), dl.notif.GetChunkOrder(), dl.notif.GetProgress(),
 			dl.notif.GetMessageAccessStatus().GetCompleteAccessGranted())
 		cli.dispatchEvent(&events.HistorySyncStatus{Notification: dl.notif})
+		// Nothing to download, so there is nothing a receipt could lose.
+		cli.sendDeferredHistorySyncReceipt(ctx, dl)
 		return
 	}
 	if dl.err != nil {
-		cli.Log.Errorf("Failed to download history sync: %v", dl.err)
+		if dl.receiptID != "" {
+			cli.Log.Errorf("Failed to download history sync %s, withholding its receipt: %v", dl.receiptID, dl.err)
+		} else {
+			cli.Log.Errorf("Failed to download history sync: %v", dl.err)
+		}
 		return
 	}
-	cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif})
+	if cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif}) && dl.receiptID != "" {
+		cli.Log.Errorf("History sync %s was not handled, withholding its receipt", dl.receiptID)
+		return
+	}
+	cli.sendDeferredHistorySyncReceipt(ctx, dl)
 	notif := dl.notif
 	err := cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
 	if err != nil {

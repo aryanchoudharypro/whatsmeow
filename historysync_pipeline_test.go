@@ -2,6 +2,7 @@ package whatsmeow
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,7 +53,7 @@ func TestHistorySyncDownloadsDispatchInOrder(t *testing.T) {
 	})
 
 	for i := range chunks {
-		cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(uint32(i)), DirectPath: proto.String("/v/t62/history")}
+		cli.historySyncNotifications <- historySyncRequest{notif: &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(uint32(i)), DirectPath: proto.String("/v/t62/history")}}
 	}
 	cli.historySyncHandlerStarted.Store(true)
 	go cli.handleHistorySyncNotificationLoop()
@@ -87,8 +88,8 @@ func TestHistorySyncFailedDownloadDoesNotBlockLaterChunks(t *testing.T) {
 			got <- hs.Data.GetChunkOrder()
 		}
 	})
-	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(0), DirectPath: proto.String("/v/t62/history")}
-	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(1), DirectPath: proto.String("/v/t62/history")}
+	cli.historySyncNotifications <- historySyncRequest{notif: &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(0), DirectPath: proto.String("/v/t62/history")}}
+	cli.historySyncNotifications <- historySyncRequest{notif: &waE2E.HistorySyncNotification{ChunkOrder: proto.Uint32(1), DirectPath: proto.String("/v/t62/history")}}
 	cli.historySyncHandlerStarted.Store(true)
 	go cli.handleHistorySyncNotificationLoop()
 	select {
@@ -114,10 +115,10 @@ func TestHistorySyncStatusNotificationIsNotDownloaded(t *testing.T) {
 			got <- st
 		}
 	})
-	cli.historySyncNotifications <- &waE2E.HistorySyncNotification{
+	cli.historySyncNotifications <- historySyncRequest{notif: &waE2E.HistorySyncNotification{
 		SyncType:            waE2E.HistorySyncType_MESSAGE_ACCESS_STATUS.Enum(),
 		MessageAccessStatus: &waE2E.HistorySyncMessageAccessStatus{CompleteAccessGranted: proto.Bool(false)},
-	}
+	}}
 	cli.historySyncHandlerStarted.Store(true)
 	go cli.handleHistorySyncNotificationLoop()
 	select {
@@ -128,5 +129,68 @@ func TestHistorySyncStatusNotificationIsNotDownloaded(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("no status event")
+	}
+}
+
+// historySyncReceiptRun feeds one chunk through the loop with its receipt
+// deferred, and reports what was sent and whether the handler had already
+// seen the chunk by then.
+func historySyncReceiptRun(t *testing.T, downloadErr error) (receipts []string, handledFirst bool) {
+	t.Helper()
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	cli.BackgroundEventCtx = context.Background()
+	cli.historySyncDownloader = func(context.Context, *waE2E.HistorySyncNotification, bool) (*waHistorySync.HistorySync, error) {
+		if downloadErr != nil {
+			return nil, downloadErr
+		}
+		return &waHistorySync.HistorySync{}, nil
+	}
+	var handled atomic.Bool
+	cli.AddEventHandler(func(evt any) {
+		if _, ok := evt.(*events.HistorySync); ok {
+			handled.Store(true)
+		}
+	})
+	sent := make(chan string, 4)
+	cli.historySyncReceiptSender = func(_ context.Context, id string) error {
+		handledFirst = handled.Load()
+		sent <- id
+		return nil
+	}
+	// A status-only notification behind the chunk marks the chunk as finished.
+	cli.historySyncNotifications <- historySyncRequest{
+		notif:     &waE2E.HistorySyncNotification{DirectPath: proto.String("/v/t62/history")},
+		receiptID: "CHUNK",
+	}
+	cli.historySyncNotifications <- historySyncRequest{notif: &waE2E.HistorySyncNotification{}, receiptID: "STATUS"}
+	cli.historySyncHandlerStarted.Store(true)
+	go cli.handleHistorySyncNotificationLoop()
+	for {
+		select {
+		case id := <-sent:
+			receipts = append(receipts, id)
+			if id == "STATUS" {
+				return receipts, handledFirst
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatal("the status notification was never acknowledged")
+		}
+	}
+}
+
+func TestHistorySyncDeferredReceiptFollowsTheHandler(t *testing.T) {
+	receipts, handledFirst := historySyncReceiptRun(t, nil)
+	if len(receipts) != 2 || receipts[0] != "CHUNK" {
+		t.Fatalf("receipts %v, want the chunk's then the status's", receipts)
+	}
+	if !handledFirst {
+		t.Fatal("the receipt went out before the handler saw the chunk")
+	}
+}
+
+func TestHistorySyncDeferredReceiptIsWithheldWhenTheDownloadFails(t *testing.T) {
+	receipts, _ := historySyncReceiptRun(t, errors.New("blob is gone"))
+	if len(receipts) != 1 || receipts[0] != "STATUS" {
+		t.Fatalf("receipts %v, want only the status's", receipts)
 	}
 }

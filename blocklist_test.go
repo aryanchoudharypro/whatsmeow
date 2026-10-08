@@ -20,7 +20,7 @@ func TestParseBlocklistKeepsPhoneNumberAndActive(t *testing.T) {
 			{Tag: "item", Attrs: waBinary.Attrs{"jid": pn}},
 		},
 	}
-	got := (&Client{}).parseBlocklist(node)
+	got, mappings := (&Client{}).parseBlocklist(node)
 	if len(got.JIDs) != 3 || len(got.Entries) != 3 {
 		t.Fatalf("want 3 JIDs and entries, got %+v", got)
 	}
@@ -32,5 +32,22 @@ func TestParseBlocklistKeepsPhoneNumberAndActive(t *testing.T) {
 	}
 	if e := got.Entries[2]; e.JID != pn || !e.PN.IsEmpty() || e.Active {
 		t.Fatalf("entry without a phone number attribute: %+v", e)
+	}
+	if got.AddressingMode != types.AddressingModeLID || got.DHash != "1784533331843123" {
+		t.Fatalf("list attributes: mode %q dhash %q", got.AddressingMode, got.DHash)
+	}
+	// Only the active LID-PN pair is learned; the inactive one would
+	// overwrite the current mapping.
+	if len(mappings) != 1 || mappings[0].LID != lid || mappings[0].PN != pn {
+		t.Fatalf("LID mappings: %+v", mappings)
+	}
+	if lids := got.LIDs(); len(lids) != 3 || lids[0] != lid || lids[1] != oldLID || lids[2] != pn {
+		t.Fatalf("LIDs(): %+v", lids)
+	}
+	if !got.IsBlocked(lid) || !got.IsBlocked(oldLID) || !got.IsBlocked(pn) {
+		t.Fatal("IsBlocked missed a listed JID")
+	}
+	if got.IsBlocked(types.NewJID("919800000002", types.DefaultUserServer)) || got.IsBlocked(types.EmptyJID) {
+		t.Fatal("IsBlocked matched an unlisted JID")
 	}
 }

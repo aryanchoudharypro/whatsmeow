@@ -1002,10 +1002,12 @@ func (cli *Client) usync(ctx context.Context, jids []types.JID, mode, context st
 	}
 }
 
-func (cli *Client) parseBlocklist(node *waBinary.Node) *types.Blocklist {
+func (cli *Client) parseBlocklist(node *waBinary.Node) (*types.Blocklist, []store.LIDMapping) {
 	output := &types.Blocklist{
-		DHash: node.AttrGetter().String("dhash"),
+		DHash:          node.AttrGetter().String("dhash"),
+		AddressingMode: types.AddressingMode(node.AttrGetter().String("addressing_mode")),
 	}
+	var lidMappings []store.LIDMapping
 	for _, child := range node.GetChildren() {
 		ag := child.AttrGetter()
 		blockedJID := ag.JID("jid")
@@ -1014,22 +1016,31 @@ func (cli *Client) parseBlocklist(node *waBinary.Node) *types.Blocklist {
 			continue
 		}
 
-		output.JIDs = append(output.JIDs, blockedJID)
-		output.Entries = append(output.Entries, types.BlocklistEntry{
+		entry := types.BlocklistEntry{
 			JID:    blockedJID,
 			PN:     ag.OptionalJIDOrEmpty("pn_jid"),
 			Active: ag.OptionalBool("active"),
-		})
+		}
+		output.JIDs = append(output.JIDs, blockedJID)
+		output.Entries = append(output.Entries, entry)
+		// Learn LID-PN pairs from the blocklist, as WhatsApp Web does. Only
+		// active entries: the rest pair a phone number with a LID it has
+		// since left, which would overwrite the current one.
+		if entry.Active && entry.JID.Server == types.HiddenUserServer && entry.PN.Server == types.DefaultUserServer {
+			lidMappings = append(lidMappings, store.LIDMapping{PN: entry.PN, LID: entry.JID})
+		}
 	}
-	return output
+	return output, lidMappings
 }
 
 // GetBlocklist gets the list of users that this user has blocked.
+//
+// If a dhash is provided, and it matches the server value, then no blocklist will be returned.
 func (cli *Client) GetBlocklist(ctx context.Context, dhash string) (*types.Blocklist, error) {
 	var content []waBinary.Node
 	if dhash != "" {
 		content = []waBinary.Node{{
-			Tag: "list",
+			Tag: "item",
 			Attrs: waBinary.Attrs{
 				"dhash": dhash,
 			},
@@ -1051,31 +1062,28 @@ func (cli *Client) GetBlocklist(ctx context.Context, dhash string) (*types.Block
 		}
 		return nil, &ElementMissingError{Tag: "list", In: "response to blocklist query"}
 	}
-	output := cli.parseBlocklist(&list)
-	cli.storeBlocklistLIDMappings(ctx, output)
-	return output, nil
-}
-
-// storeBlocklistLIDMappings learns LID-PN pairs from the blocklist, as
-// WhatsApp Web does. Only active entries: the rest pair a phone number with a
-// LID it has since left, which would overwrite the current one.
-func (cli *Client) storeBlocklistLIDMappings(ctx context.Context, list *types.Blocklist) {
-	var mappings []store.LIDMapping
-	for _, entry := range list.Entries {
-		if entry.Active && entry.JID.Server == types.HiddenUserServer && entry.PN.Server == types.DefaultUserServer {
-			mappings = append(mappings, store.LIDMapping{LID: entry.JID, PN: entry.PN})
+	blocklist, mappings := cli.parseBlocklist(&list)
+	if len(mappings) > 0 {
+		err = cli.Store.LIDs.PutManyLIDMappings(ctx, mappings)
+		if err != nil {
+			cli.Log.Errorf("Failed to store LID mappings from blocklist query: %v", err)
 		}
 	}
-	if len(mappings) == 0 {
-		return
-	}
-	if err := cli.Store.LIDs.PutManyLIDMappings(ctx, mappings); err != nil {
-		cli.Log.Warnf("Failed to store LID mappings from blocklist: %v", err)
-	}
+	return blocklist, nil
 }
 
 // UpdateBlocklist updates the user's block list and returns the updated list.
+//
+// This keeps the fork's original signature; use UpdateBlocklistWithDHash to
+// pass the current dhash as upstream's UpdateBlocklist does.
 func (cli *Client) UpdateBlocklist(ctx context.Context, jid types.JID, action events.BlocklistChangeAction) (*types.Blocklist, error) {
+	return cli.UpdateBlocklistWithDHash(ctx, jid, action, "")
+}
+
+// UpdateBlocklistWithDHash updates the user's block list and returns the updated list.
+//
+// If a dhash is provided, and it matches the server value, then an updated blocklist will not be returned.
+func (cli *Client) UpdateBlocklistWithDHash(ctx context.Context, jid types.JID, action events.BlocklistChangeAction, dhash string) (*types.Blocklist, error) {
 	var lidJID, pnJID types.JID
 
 	if jid.Server == types.DefaultUserServer {
@@ -1113,6 +1121,9 @@ func (cli *Client) UpdateBlocklist(ctx context.Context, jid types.JID, action ev
 	if action == events.BlocklistChangeActionBlock && !pnJID.IsEmpty() {
 		itemAttrs["pn_jid"] = pnJID
 	}
+	if dhash != "" {
+		itemAttrs["dhash"] = dhash
+	}
 
 	resp, err := cli.sendIQ(ctx, infoQuery{
 		Namespace: "blocklist",
@@ -1130,5 +1141,9 @@ func (cli *Client) UpdateBlocklist(ctx context.Context, jid types.JID, action ev
 	if !ok {
 		return nil, &ElementMissingError{Tag: "list", In: "response to blocklist update"}
 	}
-	return cli.parseBlocklist(&list), err
+	if dhash != "" && list.AttrGetter().Bool("matched") {
+		return nil, nil
+	}
+	blocklist, _ := cli.parseBlocklist(&list)
+	return blocklist, err
 }

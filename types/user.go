@@ -9,6 +9,7 @@ package types
 import (
 	"time"
 
+	"go.mau.fi/util/exslices"
 	"go.mau.fi/util/jsontime"
 
 	"go.mau.fi/whatsmeow/proto/waVnameCert"
@@ -213,6 +214,8 @@ type TextStatus struct {
 
 // Blocklist contains the user's current list of blocked users.
 type Blocklist struct {
+	AddressingMode AddressingMode
+
 	DHash string // TODO is this just a timestamp?
 	JIDs  []JID
 	// Entries has the same users as JIDs, in the same order, with what else
@@ -229,6 +232,27 @@ type BlocklistEntry struct {
 	// Active is false for a LID the phone number no longer goes by: one
 	// person can be listed under several LIDs, at most one of them active.
 	Active bool
+}
+
+// LIDs returns the blocked JIDs as the server listed them (usually LIDs).
+func (bl *Blocklist) LIDs() []JID {
+	return exslices.CastFunc[JID](bl.Entries, func(entry BlocklistEntry) JID {
+		return entry.JID
+	})
+}
+
+// IsBlocked reports whether the given JID appears in the blocklist, either as
+// a listed JID or as the phone number given for one.
+func (bl *Blocklist) IsBlocked(jid JID) bool {
+	if jid.IsEmpty() {
+		return false
+	}
+	for _, entry := range bl.Entries {
+		if entry.JID == jid || entry.PN == jid {
+			return true
+		}
+	}
+	return false
 }
 
 // BusinessHoursConfig contains business operating hours of a WhatsApp business.

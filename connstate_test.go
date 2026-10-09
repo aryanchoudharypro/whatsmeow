@@ -606,3 +606,51 @@ func TestABPropsDeltaUpdatesTheCache(t *testing.T) {
 		t.Fatalf("after a full set: %v", props)
 	}
 }
+
+func TestABPropsAreOnlyFetchedAgainWhenTheServerNamesANewSet(t *testing.T) {
+	cli := NewClient(newTestDevice(&memConnState{}), nil)
+	props := func(attrs waBinary.Attrs) *waBinary.Node {
+		return &waBinary.Node{Tag: "iq", Content: []waBinary.Node{{Tag: "props", Attrs: attrs}}}
+	}
+	cli.abPropsServerRefreshID = 7
+	if cli.abPropsAreCurrent() {
+		t.Fatal("nothing is cached yet, so there is nothing current")
+	}
+	cli.applyABProps(props(waBinary.Attrs{"protocol": "1", "hash": "a", "refresh_id": "7"}))
+	if !cli.abPropsAreCurrent() {
+		t.Fatal("the cached set is the one the server named")
+	}
+	cli.abPropsServerRefreshID = 8
+	if cli.abPropsAreCurrent() {
+		t.Fatal("the server named a newer set")
+	}
+	// An answer that names no ID counts for the ID it was fetched under.
+	cli.applyABProps(props(waBinary.Attrs{"protocol": "1", "hash": "b"}))
+	if !cli.abPropsAreCurrent() {
+		t.Fatal("the set fetched under ID 8 is current for ID 8")
+	}
+	// A <success> without an ID gives no reason to ask again.
+	cli.abPropsServerRefreshID = 0
+	if !cli.abPropsAreCurrent() {
+		t.Fatal("no ID from the server means the cache stands")
+	}
+}
+
+func TestUnifiedSessionIsNotSentTwiceInARow(t *testing.T) {
+	cli := NewClient(newTestDevice(&memConnState{}), nil)
+	// Not connected, so nothing goes out; only the gate is under test.
+	cli.sendUnifiedSession()
+	first := cli.lastUnifiedSession.Load()
+	if first == 0 {
+		t.Fatal("the first send wasn't recorded")
+	}
+	cli.sendUnifiedSession()
+	if cli.lastUnifiedSession.Load() != first {
+		t.Fatal("a second send right after the first went through the gate")
+	}
+	cli.lastUnifiedSession.Store(first - unifiedSessionMinGap.Milliseconds() - 1)
+	cli.sendUnifiedSession()
+	if cli.lastUnifiedSession.Load() <= first-unifiedSessionMinGap.Milliseconds() {
+		t.Fatal("a send after the gap was held back")
+	}
+}

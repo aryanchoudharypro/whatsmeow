@@ -186,6 +186,9 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 	ag := node.AttrGetter()
 	nodeLID := ag.JID("lid")
 	cli.serverTimeOffset.Store(int64(ag.UnixTime("t").Sub(time.Now().Round(time.Second))))
+	cli.abPropsLock.Lock()
+	cli.abPropsServerRefreshID = ag.OptionalInt("abprops")
+	cli.abPropsLock.Unlock()
 
 	if !cli.Store.LID.IsEmpty() && !nodeLID.IsEmpty() && cli.Store.LID != nodeLID {
 		// This should probably never happen, but check just in case.

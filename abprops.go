@@ -11,6 +11,7 @@ import (
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 // Some of the server's feature flags ("AB props"), by config code, as
@@ -62,14 +63,21 @@ func (cli *Client) CachedABProps() ABProps {
 	return maps.Clone(cli.abPropsCache)
 }
 
-// refreshABProps fetches the feature flags after connecting, as WhatsApp Web
-// does on every connection. Once a full set is cached, later connections
-// send its hash and the server answers with only what changed.
+// refreshABProps fetches the feature flags after connecting when they may
+// have changed. WhatsApp Web (WAWebHandleSuccess) only asks again when the
+// refresh ID in the server's <success> differs from the one its stored flags
+// came with, so a reconnect that names the same ID sends nothing. Once a full
+// set is cached, a fetch sends its hash and the server answers with only what
+// changed.
 func (cli *Client) refreshABProps(ctx context.Context) {
 	cli.abPropsLock.Lock()
 	hash := cli.abPropsHash
 	seeded := cli.abPropsCache != nil
+	current := cli.abPropsAreCurrent()
 	cli.abPropsLock.Unlock()
+	if current {
+		return
+	}
 
 	attrs := waBinary.Attrs{"protocol": "1"}
 	// A delta is only what changed, so it is useless without the full set
@@ -88,6 +96,16 @@ func (cli *Client) refreshABProps(ctx context.Context) {
 		return
 	}
 	cli.applyABProps(resp)
+	cli.dispatchEvent(&events.ABPropsRefreshed{})
+}
+
+// abPropsAreCurrent is whether the cached flags are the set the server's last
+// <success> named, or it named none. The caller holds abPropsLock.
+func (cli *Client) abPropsAreCurrent() bool {
+	if cli.abPropsCache == nil {
+		return false
+	}
+	return cli.abPropsServerRefreshID == 0 || cli.abPropsServerRefreshID == cli.abPropsRefreshID
 }
 
 // applyABProps takes a props response into the cache: a full set replaces
@@ -109,6 +127,13 @@ func (cli *Client) applyABProps(resp *waBinary.Node) {
 	}
 	if newHash := ag.OptionalString("hash"); newHash != "" {
 		cli.abPropsHash = newHash
+	}
+	if refreshID := ag.OptionalInt("refresh_id"); refreshID != 0 {
+		cli.abPropsRefreshID = refreshID
+	} else if cli.abPropsServerRefreshID != 0 {
+		// An answer without an ID is still the answer for the ID that was
+		// current when it was asked for.
+		cli.abPropsRefreshID = cli.abPropsServerRefreshID
 	}
 }
 

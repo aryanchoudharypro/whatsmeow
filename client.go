@@ -133,6 +133,12 @@ type Client struct {
 	abPropsLock  sync.Mutex
 	abPropsCache ABProps
 	abPropsHash  string
+	// abPropsRefreshID is the refresh ID the cached flags came with, and
+	// abPropsServerRefreshID the one the server named in its last <success>.
+	abPropsRefreshID       int
+	abPropsServerRefreshID int
+
+	lastUnifiedSession atomic.Int64
 
 	mediaConnCache *MediaConn
 	mediaConnLock  sync.Mutex
@@ -1167,6 +1173,7 @@ func (cli *Client) StoreLIDPNMapping(ctx context.Context, first, second types.JI
 
 const unifiedOffset = 3 * 24 * time.Hour
 const week = 7 * 24 * time.Hour
+const unifiedSessionMinGap = 5 * time.Second
 
 func (cli *Client) getUnifiedSessionID() string {
 	unifiedTS := time.Now().
@@ -1178,6 +1185,13 @@ func (cli *Client) getUnifiedSessionID() string {
 
 func (cli *Client) sendUnifiedSession() {
 	if cli == nil {
+		return
+	}
+	// WhatsApp Web shares a session ID once when it is made. Connecting and
+	// then coming online right away would otherwise send two in a row.
+	now := time.Now().UnixMilli()
+	last := cli.lastUnifiedSession.Load()
+	if now-last < unifiedSessionMinGap.Milliseconds() || !cli.lastUnifiedSession.CompareAndSwap(last, now) {
 		return
 	}
 

@@ -566,6 +566,11 @@ type GroupsDirty struct {
 	Groups []types.JID
 }
 
+// ABPropsRefreshed is emitted after the client fetched the server's feature
+// flags; Client.CachedABProps has the new set. It is not emitted for a
+// connection where the cached flags were still current.
+type ABPropsRefreshed struct{}
+
 // DirtyState is emitted when the server marks some of our state as stale
 // (type "groups", "account_sync", "syncd_app_state" or
 // "newsletter_metadata"). The client marks it clean itself, after resyncing

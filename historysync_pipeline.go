@@ -31,9 +31,9 @@ type historySyncRequest struct {
 type historySyncDownload struct {
 	notif     *waE2E.HistorySyncNotification
 	receiptID types.MessageID
-	done  chan struct{}
-	blob  *waHistorySync.HistorySync
-	err   error
+	done      chan struct{}
+	blob      *waHistorySync.HistorySync
+	err       error
 	// statusOnly is a notification with nothing to download.
 	statusOnly bool
 }

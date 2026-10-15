@@ -271,7 +271,9 @@ func (gmc *groupMetaCache) CanSend(sender types.JID, message *waE2E.Message) boo
 		message.QuestionResponseMessage != nil ||
 		message.CommentMessage != nil ||
 		message.EncCommentMessage != nil ||
-		slices.Contains(gmc.Admins, sender)
+		// The admin list holds user JIDs, while SendMessage passes our own
+		// device JID, so drop the device part before comparing.
+		slices.Contains(gmc.Admins, sender.ToNonAD())
 }
 
 type MessengerConfig struct {

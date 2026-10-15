@@ -112,6 +112,10 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 	}
 	cli.sendDeferredHistorySyncReceipt(ctx, dl)
 	notif := dl.notif
+	// History carried inline in the notification was never uploaded.
+	if notif.GetDirectPath() == "" {
+		return
+	}
 	err := cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
 	if err != nil {
 		cli.Log.Warnf("Failed to delete history sync media from server: %v", err)

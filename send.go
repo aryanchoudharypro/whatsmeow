@@ -619,6 +619,10 @@ func (cli *Client) BuildHistorySyncRequest(lastKnownMessageInfo *types.MessageIn
 					// Milliseconds, as the name says: WA Web sends the oldest
 					// message's time (seconds) multiplied by 1000.
 					OldestMsgTimestampMS: proto.Int64(lastKnownMessageInfo.Timestamp.UnixMilli()),
+					// Lets the phone put the history in the notification itself
+					// rather than uploading it for a separate download, as WA Web
+					// allows; DownloadHistorySync reads either.
+					SupportInlineResponse: proto.Bool(true),
 				},
 			},
 		},

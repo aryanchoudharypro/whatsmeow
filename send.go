@@ -616,8 +616,9 @@ func (cli *Client) BuildHistorySyncRequest(lastKnownMessageInfo *types.MessageIn
 					OldestMsgID:      proto.String(lastKnownMessageInfo.ID),
 					OldestMsgFromMe:  proto.Bool(lastKnownMessageInfo.IsFromMe),
 					OnDemandMsgCount: proto.Int32(int32(count)),
-					// Despite the field name saying "MS", this is actually supposed to contain seconds
-					OldestMsgTimestampMS: proto.Int64(lastKnownMessageInfo.Timestamp.Unix()),
+					// Milliseconds, as the name says: WA Web sends the oldest
+					// message's time (seconds) multiplied by 1000.
+					OldestMsgTimestampMS: proto.Int64(lastKnownMessageInfo.Timestamp.UnixMilli()),
 				},
 			},
 		},

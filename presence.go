@@ -9,6 +9,8 @@ package whatsmeow
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
@@ -145,18 +147,19 @@ func (cli *Client) UnsubscribePresence(ctx context.Context, jid types.JID) error
 }
 
 // The server forgets presence subscriptions whenever the connection drops, so
-// every subscription is remembered and renewed after each reconnect - without
-// that, presence and typing updates silently stopped after the first network
-// blip. Ported from whatsapp-rust's presence subscription tracking.
+// subscriptions are remembered and the most recent ones renewed after each
+// reconnect - without that, presence and typing updates silently stopped after
+// the first network blip. Ported from whatsapp-rust's presence subscription
+// tracking.
 func (cli *Client) trackPresenceSubscription(jid types.JID, subscribed bool) {
 	jid = jid.ToNonAD()
 	cli.presenceSubsLock.Lock()
 	defer cli.presenceSubsLock.Unlock()
 	if subscribed {
 		if cli.presenceSubs == nil {
-			cli.presenceSubs = make(map[types.JID]struct{})
+			cli.presenceSubs = make(map[types.JID]time.Time)
 		}
-		cli.presenceSubs[jid] = struct{}{}
+		cli.presenceSubs[jid] = time.Now()
 	} else {
 		delete(cli.presenceSubs, jid)
 	}
@@ -169,20 +172,47 @@ func (cli *Client) isPresenceSubscriptionTracked(jid types.JID) bool {
 	return ok
 }
 
-// resubscribePresences renews every remembered presence subscription on a
-// fresh connection.
+// PresenceResubscribeLimit is how many of the most recently subscribed
+// contacts get their presence subscription renewed after a reconnect. WA Web
+// renews none on its own - it subscribes again only when a chat is looked at -
+// so renewing every contact ever opened in one burst on each reconnect looks
+// nothing like it. Older subscriptions are forgotten; subscribe again when the
+// chat is opened.
+const PresenceResubscribeLimit = 3
+
+// presenceResubscribeGap spaces the renewals out.
+const presenceResubscribeGap = 500 * time.Millisecond
+
+// resubscribePresences renews the most recent presence subscriptions on a
+// fresh connection and forgets the rest.
 func (cli *Client) resubscribePresences(ctx context.Context) {
 	cli.presenceSubsLock.Lock()
 	jids := make([]types.JID, 0, len(cli.presenceSubs))
 	for jid := range cli.presenceSubs {
 		jids = append(jids, jid)
 	}
+	slices.SortFunc(jids, func(a, b types.JID) int {
+		return cli.presenceSubs[b].Compare(cli.presenceSubs[a])
+	})
+	if len(jids) > PresenceResubscribeLimit {
+		for _, jid := range jids[PresenceResubscribeLimit:] {
+			delete(cli.presenceSubs, jid)
+		}
+		jids = jids[:PresenceResubscribeLimit]
+	}
 	cli.presenceSubsLock.Unlock()
 	if len(jids) == 0 {
 		return
 	}
 	cli.Log.Debugf("Re-subscribing to presence of %d users", len(jids))
-	for _, jid := range jids {
+	for i, jid := range jids {
+		if i > 0 {
+			select {
+			case <-time.After(presenceResubscribeGap):
+			case <-ctx.Done():
+				return
+			}
+		}
 		if !cli.IsConnected() {
 			return
 		}

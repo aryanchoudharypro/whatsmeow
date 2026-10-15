@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -181,7 +182,7 @@ type Client struct {
 	offlineSyncDone      atomic.Bool
 	offlineBatch         offlineBatchState
 	resendLimiter        resendLimiter
-	presenceSubs         map[types.JID]struct{}
+	presenceSubs         map[types.JID]time.Time
 	presenceSubsLock     sync.Mutex
 	userDevicesCache     map[types.JID]deviceCache
 	userDevicesCacheLock sync.Mutex
@@ -707,13 +708,44 @@ func (cli *Client) isExpectedDisconnect() bool {
 	return cli.expectedDisconnect.IsSet()
 }
 
+// autoReconnectStableAfter is how long a connection must have lasted for the
+// next reconnect to start from no delay again (WA Web: 10 s).
+const autoReconnectStableAfter = 10 * time.Second
+
+// autoReconnectMaxDelay caps the reconnect backoff (WA Web: 900 s).
+const autoReconnectMaxDelay = 900 * time.Second
+
+// autoReconnectBackoff is the wait before reconnect attempt n (0-based),
+// following WA Web: the first retry is immediate, then Fibonacci seconds
+// (1, 1, 2, 3, 5, 8, ...) up to 15 minutes, with up to 10% added jitter.
+func autoReconnectBackoff(n int) time.Duration {
+	if n <= 0 {
+		return 0
+	}
+	a, b := 1, 1
+	for i := 1; i < n && time.Duration(a)*time.Second < autoReconnectMaxDelay; i++ {
+		a, b = b, a+b
+	}
+	d := time.Duration(a) * time.Second
+	if d > autoReconnectMaxDelay {
+		d = autoReconnectMaxDelay
+	}
+	return d + time.Duration(rand.Int64N(int64(d)/10+1))
+}
+
 func (cli *Client) autoReconnect(ctx context.Context) {
 	if !cli.EnableAutoReconnect || cli.Store.ID == nil {
 		return
 	}
+	// A connection that held for a while earns an immediate retry; one the
+	// server dropped right after login keeps backing off, so a session being
+	// kicked can't turn into a tight reconnect loop.
+	if !cli.LastSuccessfulConnect.IsZero() && time.Since(cli.LastSuccessfulConnect) >= autoReconnectStableAfter {
+		cli.AutoReconnectErrors = 0
+	}
 	// TODO wait for handler queue to close here?
 	for {
-		autoReconnectDelay := time.Duration(cli.AutoReconnectErrors) * 2 * time.Second
+		autoReconnectDelay := autoReconnectBackoff(cli.AutoReconnectErrors)
 		cli.Log.Debugf("Automatically reconnecting after %v", autoReconnectDelay)
 		cli.AutoReconnectErrors++
 		if cli.expectedDisconnect.WaitTimeoutCtx(ctx, autoReconnectDelay) == nil {

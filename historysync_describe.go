@@ -17,7 +17,7 @@ import (
 // recognize, and the notification's own metadata. It's what tells an empty
 // chunk apart from one whose history arrived in a field this version can't
 // read.
-func describeHistorySyncBlob(notif *waE2E.HistorySyncNotification, hs *waHistorySync.HistorySync, compressedLen, rawLen int) string {
+func describeHistorySyncBlob(notif *waE2E.HistorySyncNotification, hs *waHistorySync.HistorySync, compressedLen, rawLen, conversations, messages int) string {
 	var fields []string
 	hs.ProtoReflect().Range(func(fd protoreflect.FieldDescriptor, v protoreflect.Value) bool {
 		switch {
@@ -31,14 +31,10 @@ func describeHistorySyncBlob(notif *waE2E.HistorySyncNotification, hs *waHistory
 		return true
 	})
 	slices.Sort(fields)
-	var messages int
-	for _, conv := range hs.GetConversations() {
-		messages += len(conv.GetMessages())
-	}
 	return fmt.Sprintf("type=%s chunk=%d progress=%d declared_len=%d compressed=%d decompressed=%d unknown_bytes=%d conversations=%d messages=%d fields=[%s] notif{oldest_ts=%d session=%t on_demand_meta=%t enc_handle=%t access_status=%t}",
 		hs.GetSyncType(), hs.GetChunkOrder(), hs.GetProgress(),
 		notif.GetFileLength(), compressedLen, rawLen, len(hs.ProtoReflect().GetUnknown()),
-		len(hs.GetConversations()), messages, strings.Join(fields, " "),
+		conversations, messages, strings.Join(fields, " "),
 		notif.GetOldestMsgInChunkTimestampSec(), notif.GetPeerDataRequestSessionID() != "",
 		notif.GetFullHistorySyncOnDemandRequestMetadata() != nil, notif.GetEncHandle() != "",
 		notif.GetMessageAccessStatus() != nil)

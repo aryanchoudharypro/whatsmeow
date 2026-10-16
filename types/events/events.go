@@ -10,10 +10,12 @@ package events
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"strconv"
 	"time"
 
 	"go.mau.fi/util/jsontime"
+	"google.golang.org/protobuf/proto"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	armadillo "go.mau.fi/whatsmeow/proto"
@@ -284,6 +286,55 @@ type HistorySync struct {
 	Data *waHistorySync.HistorySync
 
 	Notification *waE2E.HistorySyncNotification
+
+	// Conversations is set instead of Data.Conversations when
+	// Client.StreamHistorySyncConversations is on: the chunk's chats are
+	// decoded one at a time as they're iterated, so a big chunk never sits
+	// in memory as one decoded tree.
+	Conversations *HistorySyncConversations
+}
+
+// HistorySyncConversations is a history sync chunk's conversation list,
+// kept encoded and decoded one conversation at a time.
+type HistorySyncConversations struct {
+	raw [][]byte
+}
+
+// NewHistorySyncConversations wraps encoded waHistorySync.Conversation
+// messages.
+func NewHistorySyncConversations(raw [][]byte) *HistorySyncConversations {
+	return &HistorySyncConversations{raw: raw}
+}
+
+// Len returns how many conversations the chunk holds.
+func (hc *HistorySyncConversations) Len() int {
+	if hc == nil {
+		return 0
+	}
+	return len(hc.raw)
+}
+
+// All decodes and yields each conversation in order. A conversation that
+// fails to decode is yielded as nil with its error, and iteration goes on.
+// Each yielded conversation is a fresh copy; drop it when done with it.
+func (hc *HistorySyncConversations) All() iter.Seq2[*waHistorySync.Conversation, error] {
+	return func(yield func(*waHistorySync.Conversation, error) bool) {
+		if hc == nil {
+			return
+		}
+		for i, raw := range hc.raw {
+			var conv waHistorySync.Conversation
+			if err := proto.Unmarshal(raw, &conv); err != nil {
+				if !yield(nil, fmt.Errorf("failed to decode conversation %d: %w", i, err)) {
+					return
+				}
+				continue
+			}
+			if !yield(&conv, nil) {
+				return
+			}
+		}
+	}
 }
 
 // HistorySyncStatus is emitted for a history sync notification that carries

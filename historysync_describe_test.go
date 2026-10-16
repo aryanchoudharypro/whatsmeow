@@ -26,7 +26,7 @@ func TestDescribeHistorySyncBlob(t *testing.T) {
 	if err := proto.Unmarshal(raw, &parsed); err != nil {
 		t.Fatal(err)
 	}
-	got := describeHistorySyncBlob(&waE2E.HistorySyncNotification{FileLength: proto.Uint64(42)}, &parsed, 10, len(raw))
+	got := describeHistorySyncBlob(&waE2E.HistorySyncNotification{FileLength: proto.Uint64(42)}, &parsed, 10, len(raw), len(parsed.GetConversations()), 2)
 	for _, want := range []string{"type=FULL", "declared_len=42", "unknown_bytes=3", "conversations=1", "messages=2", "conversations[1]", "syncType"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("%q missing %q", got, want)

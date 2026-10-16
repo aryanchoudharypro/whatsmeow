@@ -795,26 +795,48 @@ func (cli *Client) SendHistorySyncServerErrorReceipt(ctx context.Context, msgID 
 // You only need to call this manually if you set [Client.ManualHistorySyncDownload] to true.
 // By default, whatsmeow will call this automatically and dispatch an [events.HistorySync] with the parsed data.
 func (cli *Client) DownloadHistorySync(ctx context.Context, notif *waE2E.HistorySyncNotification, synchronousStorage bool) (*waHistorySync.HistorySync, error) {
+	hs, _, err := cli.downloadHistorySync(ctx, notif, synchronousStorage, false)
+	return hs, err
+}
+
+// downloadHistorySync downloads and parses a history sync blob. With stream
+// set, the conversations are left encoded and returned separately.
+func (cli *Client) downloadHistorySync(ctx context.Context, notif *waE2E.HistorySyncNotification, synchronousStorage, stream bool) (*waHistorySync.HistorySync, *events.HistorySyncConversations, error) {
 	var data []byte
 	var err error
 	if notif.InitialHistBootstrapInlinePayload != nil {
 		data = notif.InitialHistBootstrapInlinePayload
 	} else if data, err = cli.Download(ctx, notif); err != nil {
-		return nil, fmt.Errorf("failed to download: %w", err)
+		return nil, nil, fmt.Errorf("failed to download: %w", err)
 	}
-	var historySync waHistorySync.HistorySync
+	var historySync *waHistorySync.HistorySync
+	var encodedConvs [][]byte
 	var rawLen int
 	if reader, err := zlib.NewReader(bytes.NewReader(data)); err != nil {
-		return nil, fmt.Errorf("failed to prepare to decompress: %w", err)
+		return nil, nil, fmt.Errorf("failed to prepare to decompress: %w", err)
 	} else if rawData, err := io.ReadAll(reader); err != nil {
-		return nil, fmt.Errorf("failed to decompress: %w", err)
-	} else if err = proto.Unmarshal(rawData, &historySync); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal: %w", err)
+		return nil, nil, fmt.Errorf("failed to decompress: %w", err)
+	} else if stream {
+		if historySync, encodedConvs, err = splitHistorySync(rawData); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal: %w", err)
+		}
+		rawLen = len(rawData)
 	} else {
+		historySync = &waHistorySync.HistorySync{}
+		if err = proto.Unmarshal(rawData, historySync); err != nil {
+			return nil, nil, fmt.Errorf("failed to unmarshal: %w", err)
+		}
 		rawLen = len(rawData)
 	}
+	convCount, msgCount := len(historySync.GetConversations()), 0
+	for _, conv := range historySync.GetConversations() {
+		msgCount += len(conv.GetMessages())
+	}
+	if stream {
+		convCount, msgCount = len(encodedConvs), countHistoryMessages(encodedConvs)
+	}
 	cli.Log.Debugf("Received history sync (type %s, chunk %d, progress %d)", historySync.GetSyncType(), historySync.GetChunkOrder(), historySync.GetProgress())
-	cli.Log.Infof("History sync blob: %s", describeHistorySyncBlob(notif, &historySync, len(data), rawLen))
+	cli.Log.Infof("History sync blob: %s", describeHistorySyncBlob(notif, historySync, len(data), rawLen, convCount, msgCount))
 	doStorage := func(ctx context.Context) {
 		if err := cli.storeNCTSalt(ctx, historySync.GetNctSalt()); err != nil {
 			cli.Log.Warnf("Failed to store NCT salt from history sync: %v", err)
@@ -824,6 +846,8 @@ func (cli *Client) DownloadHistorySync(ctx context.Context, notif *waE2E.History
 		}
 		if historySync.GetSyncType() == waHistorySync.HistorySync_PUSH_NAME {
 			cli.handleHistoricalPushNames(ctx, historySync.GetPushnames())
+		} else if len(encodedConvs) > 0 {
+			cli.storeHistoricalMessageSecretsEncoded(ctx, encodedConvs)
 		} else if len(historySync.GetConversations()) > 0 {
 			cli.storeHistoricalMessageSecrets(ctx, historySync.GetConversations())
 		}
@@ -839,7 +863,11 @@ func (cli *Client) DownloadHistorySync(ctx context.Context, notif *waE2E.History
 	} else {
 		go doStorage(context.WithoutCancel(ctx))
 	}
-	return &historySync, nil
+	var lazy *events.HistorySyncConversations
+	if stream {
+		lazy = events.NewHistorySyncConversations(encodedConvs)
+	}
+	return historySync, lazy, nil
 }
 
 func (cli *Client) handleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.AppStateSyncKeyShare) {
@@ -1145,6 +1173,10 @@ func (cli *Client) storeHistoricalMessageSecrets(ctx context.Context, conversati
 			}
 		}
 	}
+	cli.putHistoricalSecretsAndTokens(ctx, secrets, privacyTokens)
+}
+
+func (cli *Client) putHistoricalSecretsAndTokens(ctx context.Context, secrets []store.MessageSecretInsert, privacyTokens []store.PrivacyToken) {
 	if len(secrets) > 0 {
 		cli.Log.Debugf("Storing %d message secret keys in history sync", len(secrets))
 		err := cli.Store.MsgSecrets.PutMessageSecrets(ctx, secrets)

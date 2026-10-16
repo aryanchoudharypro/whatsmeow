@@ -33,6 +33,7 @@ type historySyncDownload struct {
 	receiptID types.MessageID
 	done      chan struct{}
 	blob      *waHistorySync.HistorySync
+	convs     *events.HistorySyncConversations
 	err       error
 	// statusOnly is a notification with nothing to download.
 	statusOnly bool
@@ -52,7 +53,13 @@ func (cli *Client) startHistorySyncDownload(ctx context.Context, req historySync
 		close(dl.done)
 		return dl
 	}
-	download := cli.DownloadHistorySync
+	stream := cli.StreamHistorySyncConversations
+	download := func(ctx context.Context, notif *waE2E.HistorySyncNotification, sync bool) (*waHistorySync.HistorySync, error) {
+		var hs *waHistorySync.HistorySync
+		var err error
+		hs, dl.convs, err = cli.downloadHistorySync(ctx, notif, sync, stream)
+		return hs, err
+	}
 	if cli.historySyncDownloader != nil {
 		download = cli.historySyncDownloader
 	}
@@ -61,7 +68,7 @@ func (cli *Client) startHistorySyncDownload(ctx context.Context, req historySync
 		defer func() {
 			if r := recover(); r != nil {
 				cli.Log.Errorf("History sync download panicked: %v\n%s", r, debug.Stack())
-				dl.blob, dl.err = nil, fmt.Errorf("panicked: %v", r)
+				dl.blob, dl.convs, dl.err = nil, nil, fmt.Errorf("panicked: %v", r)
 			}
 		}()
 		dl.blob, dl.err = download(ctx, notif, false)
@@ -106,7 +113,7 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 		}
 		return
 	}
-	if cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif}) && dl.receiptID != "" {
+	if cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif, Conversations: dl.convs}) && dl.receiptID != "" {
 		cli.Log.Errorf("History sync %s was not handled, withholding its receipt", dl.receiptID)
 		return
 	}

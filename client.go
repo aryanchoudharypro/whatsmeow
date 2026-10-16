@@ -121,6 +121,13 @@ type Client struct {
 	// whose handler fails is left unacknowledged and the phone uploads it
 	// again, so handlers may see a chunk more than once.
 	AckHistorySyncAfterDispatch bool
+	// StreamHistorySyncConversations dispatches automatically downloaded
+	// history sync chunks with their conversations left encoded, in
+	// events.HistorySync.Conversations, to be decoded one at a time; Data
+	// then has every field but Conversations. A chunk of a full sync can
+	// hold tens of thousands of messages, which decoded all at once took
+	// over 100 MB of memory.
+	StreamHistorySyncConversations bool
 
 	uploadPreKeysLock sync.Mutex
 	lastPreKeyUpload  time.Time

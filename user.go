@@ -530,9 +530,11 @@ func (cli *Client) GetUserDevices(ctx context.Context, jids []types.JID) ([]type
 	cli.userDevicesCacheLock.Lock()
 	defer cli.userDevicesCacheLock.Unlock()
 
+	// One query for every device list saved from an earlier run.
+	cli.userDevicesCache.Load(jids)
 	var devices, jidsToSync, fbJIDsToSync []types.JID
 	for _, jid := range jids {
-		cached, ok := cli.userDevicesCache[jid]
+		cached, ok := cli.userDevicesCache.Get(jid)
 		if ok && len(cached.devices) > 0 {
 			devices = append(devices, cached.devices...)
 		} else if jid.Server == types.MessengerServer {
@@ -552,15 +554,17 @@ func (cli *Client) GetUserDevices(ctx context.Context, jids []types.JID) ([]type
 			return nil, err
 		}
 
+		fetched := make(map[types.JID]deviceCache, len(jidsToSync))
 		for _, user := range list.GetChildren() {
 			jid, jidOK := user.Attrs["jid"].(types.JID)
 			if user.Tag != "user" || !jidOK {
 				continue
 			}
 			userDevices := parseDeviceList(jid, user.GetChildByTag("devices"))
-			cli.userDevicesCache[jid] = deviceCache{devices: userDevices, dhash: participantListHashV2(userDevices)}
+			fetched[jid] = deviceCache{devices: userDevices, dhash: participantListHashV2(userDevices)}
 			devices = append(devices, userDevices...)
 		}
+		cli.userDevicesCache.SetMany(fetched)
 	}
 
 	if len(fbJIDsToSync) > 0 {
@@ -907,7 +911,7 @@ func (cli *Client) getFBIDDevices(ctx context.Context, jids []types.JID) ([]type
 				continue
 			}
 			userDevices := parseFBDeviceList(jid, user.GetChildByTag("devices"))
-			cli.userDevicesCache[jid] = userDevices
+			cli.userDevicesCache.Set(jid, userDevices)
 			devices = append(devices, userDevices.devices...)
 		}
 	}

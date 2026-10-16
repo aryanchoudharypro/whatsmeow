@@ -1194,6 +1194,85 @@ const (
 	deleteExpiredTCTokenIssuedQuery = `DELETE FROM whatsmeow_fork_tctoken_issued WHERE our_jid=$1 AND issued_at < $2`
 )
 
+const (
+	getForkCacheQuery = `SELECT key, value FROM whatsmeow_fork_cache WHERE our_jid=$1 AND kind=$2 AND updated_at >= $3 AND key IN (%s)`
+	putForkCacheQuery = `
+		INSERT INTO whatsmeow_fork_cache (our_jid, kind, key, value, updated_at) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (our_jid, kind, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+	`
+	deleteForkCacheQuery = `DELETE FROM whatsmeow_fork_cache WHERE our_jid=$1 AND kind=$2 AND key IN (%s)`
+	clearForkCacheQuery  = `DELETE FROM whatsmeow_fork_cache WHERE our_jid=$1 AND kind=$2`
+)
+
+// forkCacheChunk keeps IN (...) lists well under SQLite's parameter limit.
+const forkCacheChunk = 500
+
+func inPlaceholders(start, n int) string {
+	placeholders := make([]string, n)
+	for i := range placeholders {
+		placeholders[i] = fmt.Sprintf("$%d", start+i)
+	}
+	return strings.Join(placeholders, ",")
+}
+
+// GetForkCacheEntries returns the cached values of the given keys stored at
+// or after notBefore.
+func (s *SQLStore) GetForkCacheEntries(ctx context.Context, kind string, keys []string, notBefore time.Time) (map[string][]byte, error) {
+	result := make(map[string][]byte)
+	for start := 0; start < len(keys); start += forkCacheChunk {
+		part := keys[start:min(start+forkCacheChunk, len(keys))]
+		args := make([]any, 0, len(part)+3)
+		args = append(args, s.JID, kind, notBefore.Unix())
+		for _, key := range part {
+			args = append(args, key)
+		}
+		rows, err := s.db.Query(ctx, fmt.Sprintf(getForkCacheQuery, inPlaceholders(4, len(part))), args...)
+		err = sessionScanner.NewRowIter(rows, err).Iter(func(tuple addressSessionTuple) (bool, error) {
+			result[tuple.Address] = tuple.Session
+			return true, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
+// PutForkCacheEntries stores cached values.
+func (s *SQLStore) PutForkCacheEntries(ctx context.Context, kind string, entries map[string][]byte) error {
+	now := time.Now().Unix()
+	return s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		for key, value := range entries {
+			if _, err := s.db.Exec(ctx, putForkCacheQuery, s.JID, kind, key, value, now); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// DeleteForkCacheEntries removes cached values.
+func (s *SQLStore) DeleteForkCacheEntries(ctx context.Context, kind string, keys []string) error {
+	for start := 0; start < len(keys); start += forkCacheChunk {
+		part := keys[start:min(start+forkCacheChunk, len(keys))]
+		args := make([]any, 0, len(part)+2)
+		args = append(args, s.JID, kind)
+		for _, key := range part {
+			args = append(args, key)
+		}
+		if _, err := s.db.Exec(ctx, fmt.Sprintf(deleteForkCacheQuery, inPlaceholders(3, len(part))), args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ClearForkCacheEntries removes every cached value of a kind.
+func (s *SQLStore) ClearForkCacheEntries(ctx context.Context, kind string) error {
+	_, err := s.db.Exec(ctx, clearForkCacheQuery, s.JID, kind)
+	return err
+}
+
 // GetTCTokenIssued returns when our privacy token was last issued to the
 // given user, or the zero time if it never was.
 func (s *SQLStore) GetTCTokenIssued(ctx context.Context, user types.JID) (time.Time, error) {

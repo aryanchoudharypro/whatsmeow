@@ -123,7 +123,7 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 	if fromLID != nil {
 		cli.StoreLIDPNMapping(ctx, *fromLID, from)
 	}
-	cached, ok := cli.userDevicesCache[from]
+	cached, ok := cli.userDevicesCache.Get(from)
 	if !ok {
 		cli.Log.Debugf("No device list cached for %s, ignoring device list notification", from)
 		return
@@ -131,7 +131,7 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 	var cachedLID deviceCache
 	var cachedLIDHash string
 	if fromLID != nil {
-		cachedLID = cli.userDevicesCache[*fromLID]
+		cachedLID, _ = cli.userDevicesCache.Get(*fromLID)
 		cachedLIDHash = participantListHashV2(cachedLID.devices)
 	}
 	cachedParticipantHash := participantListHashV2(cached.devices)
@@ -160,7 +160,7 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 		case "update":
 			// Exact meaning of "update" is unknown, clear device list cache to be safe
 			cli.Log.Debugf("%s's device list updated, dropping cached devices", from)
-			delete(cli.userDevicesCache, from)
+			cli.userDevicesCache.Delete(from)
 			continue
 		default:
 			cli.Log.Debugf("Unknown device list change tag %s", child.Tag)
@@ -169,19 +169,19 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 		newParticipantHash := participantListHashV2(cached.devices)
 		if newParticipantHash == deviceHash {
 			cli.Log.Debugf("%s's device list hash changed from %s to %s (%s). New hash matches", from, cachedParticipantHash, deviceHash, child.Tag)
-			cli.userDevicesCache[from] = cached
+			cli.userDevicesCache.Set(from, cached)
 		} else {
 			cli.Log.Warnf("%s's device list hash changed from %s to %s (%s). New hash doesn't match (%s)", from, cachedParticipantHash, deviceHash, child.Tag, newParticipantHash)
-			delete(cli.userDevicesCache, from)
+			cli.userDevicesCache.Delete(from)
 		}
 		if fromLID != nil && changedDeviceLID != nil && deviceLIDHash != "" {
 			newLIDParticipantHash := participantListHashV2(cachedLID.devices)
 			if newLIDParticipantHash == deviceLIDHash {
 				cli.Log.Debugf("%s's device list hash changed from %s to %s (%s). New hash matches", fromLID, cachedLIDHash, deviceLIDHash, child.Tag)
-				cli.userDevicesCache[*fromLID] = cachedLID
+				cli.userDevicesCache.Set(*fromLID, cachedLID)
 			} else {
 				cli.Log.Warnf("%s's device list hash changed from %s to %s (%s). New hash doesn't match (%s)", fromLID, cachedLIDHash, deviceLIDHash, child.Tag, newLIDParticipantHash)
-				delete(cli.userDevicesCache, *fromLID)
+				cli.userDevicesCache.Delete(*fromLID)
 			}
 		}
 	}
@@ -192,7 +192,7 @@ func (cli *Client) handleFBDeviceNotification(ctx context.Context, node *waBinar
 	defer cli.userDevicesCacheLock.Unlock()
 	jid := node.AttrGetter().JID("from")
 	userDevices := parseFBDeviceList(jid, node.GetChildByTag("devices"))
-	cli.userDevicesCache[jid] = userDevices
+	cli.userDevicesCache.Set(jid, userDevices)
 }
 
 func (cli *Client) handleOwnDevicesNotification(ctx context.Context, node *waBinary.Node, fromJID types.JID) {
@@ -216,7 +216,7 @@ func (cli *Client) handleOwnDevicesNotification(ctx context.Context, node *waBin
 		return
 	}
 	var oldHash string
-	if cached, ok := cli.userDevicesCache[fromJIDPlain]; ok {
+	if cached, ok := cli.userDevicesCache.Get(fromJIDPlain); ok {
 		oldHash = participantListHashV2(cached.devices)
 	}
 	expectedNewHash := node.AttrGetter().String("dhash")
@@ -233,12 +233,13 @@ func (cli *Client) handleOwnDevicesNotification(ctx context.Context, node *waBin
 	newHash := participantListHashV2(newDeviceList)
 	if newHash != expectedNewHash {
 		cli.Log.Debugf("Received own device list change notification %s -> %s from %s, but expected hash was %s", oldHash, newHash, fromJID, expectedNewHash)
-		delete(cli.userDevicesCache, ownID)
-		delete(cli.userDevicesCache, ownLID)
+		cli.userDevicesCache.Delete(ownID, ownLID)
 	} else {
 		cli.Log.Debugf("Received own device list change notification %s -> %s from %s", oldHash, newHash, fromJID)
-		cli.userDevicesCache[fromJIDPlain] = deviceCache{devices: newDeviceList, dhash: expectedNewHash}
-		cli.userDevicesCache[altJID] = deviceCache{devices: altDeviceList, dhash: participantListHashV2(altDeviceList)}
+		cli.userDevicesCache.SetMany(map[types.JID]deviceCache{
+			fromJIDPlain: {devices: newDeviceList, dhash: expectedNewHash},
+			altJID:       {devices: altDeviceList, dhash: participantListHashV2(altDeviceList)},
+		})
 	}
 }
 

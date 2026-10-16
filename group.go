@@ -868,13 +868,13 @@ func (cli *Client) cacheGroupInfo(groupInfo *types.GroupInfo, lock bool) ([]stor
 		cli.groupCacheLock.Lock()
 		defer cli.groupCacheLock.Unlock()
 	}
-	cli.groupCache[groupInfo.JID] = &groupMetaCache{
+	cli.groupCache.Set(groupInfo.JID, &groupMetaCache{
 		AddressingMode:             groupInfo.AddressingMode,
 		ReadOnly:                   groupInfo.IsAnnounce,
 		CommunityAnnouncementGroup: groupInfo.IsAnnounce && groupInfo.IsDefaultSubGroup,
 		Members:                    participants,
 		Admins:                     admins,
-	}
+	})
 	return lidPairs, redactedPhones
 }
 
@@ -911,17 +911,36 @@ func (cli *Client) getGroupInfo(ctx context.Context, jid types.JID, lockParticip
 	return groupInfo, nil
 }
 
+// dropGroupAndMemberDevices forgets a group's member list and its members'
+// device lists, after the server's participant hash showed ours is out of
+// date. Both are saved across restarts, so a stale copy must not linger.
+func (cli *Client) dropGroupAndMemberDevices(group types.JID) {
+	cli.groupCacheLock.Lock()
+	var members []types.JID
+	if cached, ok := cli.groupCache.mem[group]; ok {
+		members = slices.Clone(cached.Members)
+	}
+	cli.groupCache.Delete(group)
+	cli.groupCacheLock.Unlock()
+	if len(members) > 0 {
+		cli.userDevicesCacheLock.Lock()
+		cli.userDevicesCache.Delete(members...)
+		cli.userDevicesCacheLock.Unlock()
+	}
+}
+
 func (cli *Client) getCachedGroupData(ctx context.Context, jid types.JID) (*groupMetaCache, error) {
 	cli.groupCacheLock.Lock()
 	defer cli.groupCacheLock.Unlock()
-	if val, ok := cli.groupCache[jid]; ok {
+	if val, ok := cli.groupCache.Get(jid); ok {
 		return val, nil
 	}
 	_, err := cli.getGroupInfo(ctx, jid, false)
 	if err != nil {
 		return nil, err
 	}
-	return cli.groupCache[jid], nil
+	val, _ := cli.groupCache.Get(jid)
+	return val, nil
 }
 
 func parseParticipant(childAG *waBinary.AttrUtility, child *waBinary.Node) types.GroupParticipant {
@@ -1310,10 +1329,12 @@ func (cli *Client) updateGroupParticipantCache(evt *events.GroupInfo) {
 	}
 	cli.groupCacheLock.Lock()
 	defer cli.groupCacheLock.Unlock()
-	cached, ok := cli.groupCache[evt.JID]
+	cached, ok := cli.groupCache.Get(evt.JID)
 	if !ok {
 		return
 	}
+	// The entry is changed in place; save it once it's done.
+	defer cli.groupCache.Set(evt.JID, cached)
 	if evt.Announce != nil {
 		cached.ReadOnly = evt.Announce.IsAnnounce
 	}
@@ -1365,9 +1386,7 @@ func (cli *Client) handleGroupsDirty(node *waBinary.Node) *events.GroupsDirty {
 		}
 	}
 	cli.groupCacheLock.Lock()
-	for _, jid := range evt.Groups {
-		delete(cli.groupCache, jid)
-	}
+	cli.groupCache.Delete(evt.Groups...)
 	cli.groupCacheLock.Unlock()
 	return &evt
 }
@@ -1396,7 +1415,7 @@ func (cli *Client) rotateGroupSenderKey(ctx context.Context, group types.JID) {
 func (cli *Client) afterGroupChange(ctx context.Context, evt *events.GroupInfo) {
 	if len(evt.Modify) > 0 {
 		cli.groupCacheLock.Lock()
-		delete(cli.groupCache, evt.JID)
+		cli.groupCache.Delete(evt.JID)
 		cli.groupCacheLock.Unlock()
 	}
 	othersLeft := false

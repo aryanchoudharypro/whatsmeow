@@ -184,7 +184,7 @@ type Client struct {
 
 	privacySettingsCache atomic.Value
 
-	groupCache     map[types.JID]*groupMetaCache
+	groupCache     *jidCache[*groupMetaCache]
 	groupCacheLock sync.Mutex
 	// offlineSyncDone is set once the server has delivered everything that
 	// arrived while we were offline, on the current connection.
@@ -194,7 +194,7 @@ type Client struct {
 	resendLimiter        resendLimiter
 	presenceSubs         map[types.JID]time.Time
 	presenceSubsLock     sync.Mutex
-	userDevicesCache     map[types.JID]deviceCache
+	userDevicesCache     *jidCache[deviceCache]
 	userDevicesCacheLock sync.Mutex
 
 	recentMessagesMap  map[recentMessageKey]RecentMessage
@@ -345,8 +345,6 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 		tcTokenSenderTS:       make(map[types.JID]time.Time),
 		tcTokenSenderTSLoaded: make(map[types.JID]struct{}),
 		tcTokenIssuing:        make(map[types.JID]struct{}),
-		groupCache:            make(map[types.JID]*groupMetaCache),
-		userDevicesCache:      make(map[types.JID]deviceCache),
 		calls:                 make(map[string]*callState),
 
 		recentMessagesMap:      make(map[recentMessageKey]RecentMessage, recentMessagesSize),
@@ -382,6 +380,8 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 		"ib":           cli.handleIB,
 		// Apparently there's also an <error> node which can have a code=479 and means "Invalid stanza sent (smax-invalid)"
 	}
+	cli.groupCache = newJIDCache(cli, "group_meta", groupCacheMaxAge, encodeGroupMetaCache, decodeGroupMetaCache)
+	cli.userDevicesCache = newJIDCache(cli, "device_list", deviceCacheMaxAge, encodeDeviceCache, decodeDeviceCache)
 	return cli
 }
 

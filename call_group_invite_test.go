@@ -212,9 +212,9 @@ func TestInviteCallParticipantAllowsActiveVideoCall(t *testing.T) {
 	}
 	cli := &Client{
 		calls: map[string]*callState{"CID": cs},
-		userDevicesCache: map[types.JID]deviceCache{
+		userDevicesCache: memDeviceCache(map[types.JID]deviceCache{
 			target: {devices: []types.JID{target}},
-		},
+		}),
 		Log: waLog.Noop,
 	}
 	err := cli.InviteCallParticipant(context.Background(), "CID", target)
@@ -249,7 +249,7 @@ func TestInviteCallParticipantReachesSendWithoutOptimisticMutation(t *testing.T)
 	}
 	cli := &Client{
 		calls:            map[string]*callState{"CID": cs},
-		userDevicesCache: map[types.JID]deviceCache{target: {devices: targetDevices}},
+		userDevicesCache: memDeviceCache(map[types.JID]deviceCache{target: {devices: targetDevices}}),
 		Log:              waLog.Noop,
 	}
 
@@ -365,9 +365,9 @@ func TestRingCallParticipantReachesSendForInvitedRosterTarget(t *testing.T) {
 	}
 	cli := &Client{
 		calls: map[string]*callState{"CID": cs},
-		userDevicesCache: map[types.JID]deviceCache{
+		userDevicesCache: memDeviceCache(map[types.JID]deviceCache{
 			target: {devices: []types.JID{targetDevice}},
-		},
+		}),
 		Log: waLog.Noop,
 	}
 

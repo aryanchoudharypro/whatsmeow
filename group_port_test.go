@@ -97,7 +97,7 @@ func TestParseGroupChangeCommunityAndIdentityDetails(t *testing.T) {
 func TestGroupsDirtyDropsCachedGroups(t *testing.T) {
 	stale := types.NewJID("1", types.GroupServer)
 	kept := types.NewJID("2", types.GroupServer)
-	cli := &Client{Log: waLog.Noop, groupCache: map[types.JID]*groupMetaCache{stale: {}, kept: {}}}
+	cli := &Client{Log: waLog.Noop, groupCache: memGroupCache(map[types.JID]*groupMetaCache{stale: {}, kept: {}})}
 	node := &waBinary.Node{
 		Tag:   "notification",
 		Attrs: waBinary.Attrs{"from": types.ServerJID, "t": "1700000000"},
@@ -113,10 +113,10 @@ func TestGroupsDirtyDropsCachedGroups(t *testing.T) {
 	if !ok || len(dirty.Groups) != 1 || dirty.Groups[0] != stale {
 		t.Fatalf("event = %#v", evt)
 	}
-	if _, ok := cli.groupCache[stale]; ok {
+	if _, ok := cli.groupCache.mem[stale]; ok {
 		t.Error("stale group still cached")
 	}
-	if _, ok := cli.groupCache[kept]; !ok {
+	if _, ok := cli.groupCache.mem[kept]; !ok {
 		t.Error("unrelated group dropped from cache")
 	}
 }

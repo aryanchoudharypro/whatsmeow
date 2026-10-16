@@ -62,7 +62,7 @@ func (cli *Client) handleDirtyBit(dirtyType, rawTimestamp string) {
 		// Every group's member list may be out of date; the next send to
 		// each one fetches it again.
 		cli.groupCacheLock.Lock()
-		clear(cli.groupCache)
+		cli.groupCache.Clear()
 		cli.groupCacheLock.Unlock()
 	case DirtyTypeSyncdAppState:
 		for _, name := range appstate.AllPatchNames {

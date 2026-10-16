@@ -493,15 +493,12 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		cli.Log.Warnf("Server returned different participant list hash (%s != %s) when sending to %s. Some devices may not have received the message.", phash, expectedPHash, to)
 		switch to.Server {
 		case types.GroupServer:
-			// TODO also invalidate device list caches
-			cli.groupCacheLock.Lock()
-			delete(cli.groupCache, to)
-			cli.groupCacheLock.Unlock()
+			cli.dropGroupAndMemberDevices(to)
 		case types.BroadcastServer:
 			// TODO do something
 		case types.DefaultUserServer, types.HiddenUserServer, types.BotServer, types.HostedServer, types.HostedLIDServer:
 			cli.userDevicesCacheLock.Lock()
-			delete(cli.userDevicesCache, to)
+			cli.userDevicesCache.Delete(to)
 			cli.userDevicesCacheLock.Unlock()
 		}
 	}

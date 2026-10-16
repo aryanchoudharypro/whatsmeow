@@ -91,6 +91,7 @@ func (cli *Client) handleIB(ctx context.Context, node *waBinary.Node) {
 		case "offline":
 			cli.stopOfflineBatches()
 			cli.offlineSyncDone.Store(true)
+			cli.flushOfflineReceipts(ctx)
 			cli.dispatchEvent(&events.OfflineSyncCompleted{
 				Count: ag.Int("count"),
 			})
@@ -179,6 +180,8 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 		return
 	}
 	cli.Log.Infof("Successfully authenticated")
+	// Receipts still buffered from a dropped connection are sent on this one.
+	cli.flushOfflineReceipts(ctx)
 	cli.offlineSyncDone.Store(false)
 	cli.LastSuccessfulConnect = time.Now()
 	cli.isLoggedIn.Store(true)

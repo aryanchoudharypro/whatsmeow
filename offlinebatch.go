@@ -94,6 +94,8 @@ func (cli *Client) noteOfflineStanza(ctx context.Context) {
 }
 
 func (cli *Client) sendOfflineBatch(ctx context.Context) {
+	// Acknowledge what the previous batch delivered before asking for more.
+	cli.flushOfflineReceipts(ctx)
 	if err := cli.sendNode(ctx, buildOfflineBatchRequest(offlineBatchSize)); err != nil {
 		cli.Log.Warnf("Failed to request offline batch: %v", err)
 		return
@@ -124,6 +126,7 @@ func (cli *Client) offlineBatchWatchdog(ctx context.Context, gen uint64) {
 		processed := int(st.processed.Load())
 		cli.Log.Warnf("No offline stanza for %s; completing the offline sync at %d stanzas", offlineStanzaTimeout, processed)
 		cli.offlineSyncDone.Store(true)
+		cli.flushOfflineReceipts(ctx)
 		cli.dispatchEvent(&events.OfflineSyncCompleted{Count: processed})
 		return
 	}

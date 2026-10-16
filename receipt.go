@@ -287,6 +287,18 @@ func (cli *Client) sendMessageReceipt(ctx context.Context, info *types.MessageIn
 	} else if cli.sendActiveReceipts.Load() == 0 {
 		attrs["type"] = string(types.ReceiptTypeInactive)
 	}
+	// Peer messages keep individual receipts, as in WA Web and whatsapp-rust.
+	if _, offline := node.Attrs["offline"]; offline && info.Type != "peer_msg" {
+		base := make(waBinary.Attrs, len(attrs))
+		for k, v := range attrs {
+			if k != "id" {
+				base[k] = v
+			}
+		}
+		if cli.bufferOfflineReceipt(ctx, info.ID, base) {
+			return
+		}
+	}
 	err := cli.sendNode(ctx, waBinary.Node{
 		Tag:   "receipt",
 		Attrs: attrs,

@@ -190,6 +190,7 @@ type Client struct {
 	// arrived while we were offline, on the current connection.
 	offlineSyncDone      atomic.Bool
 	offlineBatch         offlineBatchState
+	offlineReceipts      offlineReceiptBuffer
 	resendLimiter        resendLimiter
 	presenceSubs         map[types.JID]time.Time
 	presenceSubsLock     sync.Mutex

@@ -100,7 +100,20 @@ func (device *Device) WithCachedSessions(ctx context.Context, addresses []string
 	}
 
 	ctx = context.WithValue(ctx, contextKeySessionCache, (*sessionCache)(exsync.NewMapWithData(wrapped)))
+	// Every device in the batch gets its identity checked and saved; load the
+	// stored keys in one query instead of one per device.
+	if prefetcher, ok := device.Identities.(identityPrefetcher); ok {
+		if err := prefetcher.PrefetchIdentities(ctx, addresses); err != nil {
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("Failed to prefetch identity keys")
+		}
+	}
 	return existingSessions, ctx, nil
+}
+
+// identityPrefetcher is implemented by identity stores that can load many
+// identity keys at once (sqlstore).
+type identityPrefetcher interface {
+	PrefetchIdentities(ctx context.Context, addresses []string) error
 }
 
 func (device *Device) PutCachedSessions(ctx context.Context) error {

@@ -13,6 +13,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -51,6 +52,12 @@ type SQLStore struct {
 	contactCacheLock sync.Mutex
 
 	migratedPNSessionsCache *exsync.Set[string]
+
+	// identityCache holds identity keys known to match the database, so the
+	// per-message trust check and the save after every encrypt/decrypt don't
+	// each hit SQL for a key that almost never changes.
+	identityCache     map[string][32]byte
+	identityCacheLock sync.RWMutex
 }
 
 // NewSQLStore creates a new SQLStore with the given database container and user JID.
@@ -64,6 +71,7 @@ func NewSQLStore(c *Container, jid types.JID) *SQLStore {
 		contactCache: make(map[types.JID]*types.ContactInfo),
 
 		migratedPNSessionsCache: exsync.NewSet[string](),
+		identityCache:           make(map[string][32]byte),
 	}
 }
 
@@ -79,22 +87,78 @@ const (
 	getIdentityQuery         = `SELECT identity FROM whatsmeow_identity_keys WHERE our_jid=$1 AND their_id=$2`
 )
 
+// inTxn reports whether ctx carries a database transaction. Writes made
+// inside one may still be rolled back, so they must not be cached.
+func (s *SQLStore) inTxn(ctx context.Context) bool {
+	_, ok := s.db.Execable(ctx).(dbutil.Transaction)
+	return ok
+}
+
+func (s *SQLStore) cachedIdentity(address string) ([32]byte, bool) {
+	s.identityCacheLock.RLock()
+	key, ok := s.identityCache[address]
+	s.identityCacheLock.RUnlock()
+	return key, ok
+}
+
+func (s *SQLStore) cacheIdentity(address string, key [32]byte) {
+	s.identityCacheLock.Lock()
+	s.identityCache[address] = key
+	s.identityCacheLock.Unlock()
+}
+
+func (s *SQLStore) forgetIdentity(address string) {
+	s.identityCacheLock.Lock()
+	delete(s.identityCache, address)
+	s.identityCacheLock.Unlock()
+}
+
+// forgetIdentitiesOf drops every cached device identity of a user
+// (addresses of the form "user:device" or "user.agent:device").
+func (s *SQLStore) forgetIdentitiesOf(user string) {
+	prefix := user + ":"
+	s.identityCacheLock.Lock()
+	for addr := range s.identityCache {
+		if strings.HasPrefix(addr, prefix) {
+			delete(s.identityCache, addr)
+		}
+	}
+	s.identityCacheLock.Unlock()
+}
+
 func (s *SQLStore) PutIdentity(ctx context.Context, address string, key [32]byte) error {
+	if cached, ok := s.cachedIdentity(address); ok && cached == key {
+		return nil
+	}
 	_, err := s.db.Exec(ctx, putIdentityQuery, s.JID, address, key[:])
-	return err
+	if err != nil {
+		s.forgetIdentity(address)
+		return err
+	}
+	if s.inTxn(ctx) {
+		s.forgetIdentity(address)
+	} else {
+		s.cacheIdentity(address, key)
+	}
+	return nil
 }
 
 func (s *SQLStore) DeleteAllIdentities(ctx context.Context, phone string) error {
 	_, err := s.db.Exec(ctx, deleteAllIdentitiesQuery, s.JID, phone+":%")
+	s.forgetIdentitiesOf(phone)
 	return err
 }
 
 func (s *SQLStore) DeleteIdentity(ctx context.Context, address string) error {
 	_, err := s.db.Exec(ctx, deleteAllIdentitiesQuery, s.JID, address)
+	s.forgetIdentity(address)
 	return err
 }
 
 func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [32]byte) (bool, error) {
+	if cached, ok := s.cachedIdentity(address); ok {
+		return cached == key, nil
+	}
 	var existingIdentity []byte
 	err := s.db.QueryRow(ctx, getIdentityQuery, s.JID, address).Scan(&existingIdentity)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,7 +169,57 @@ func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [3
 	} else if len(existingIdentity) != 32 {
 		return false, ErrInvalidLength
 	}
-	return *(*[32]byte)(existingIdentity) == key, nil
+	existing := *(*[32]byte)(existingIdentity)
+	if !s.inTxn(ctx) {
+		s.cacheIdentity(address, existing)
+	}
+	return existing == key, nil
+}
+
+const getManyIdentitiesQueryGeneric = `SELECT their_id, identity FROM whatsmeow_identity_keys WHERE our_jid=$1 AND their_id IN (%s)`
+
+// PrefetchIdentities loads the stored identity keys of the given addresses
+// into the cache with one query, ahead of a group send that checks and saves
+// each of them.
+func (s *SQLStore) PrefetchIdentities(ctx context.Context, addresses []string) error {
+	missing := make([]string, 0, len(addresses))
+	s.identityCacheLock.RLock()
+	for _, addr := range addresses {
+		if _, ok := s.identityCache[addr]; !ok {
+			missing = append(missing, addr)
+		}
+	}
+	s.identityCacheLock.RUnlock()
+	if len(missing) == 0 || s.inTxn(ctx) {
+		return nil
+	}
+	// SQLite allows 32766 parameters; stay far below it.
+	const chunk = 500
+	for start := 0; start < len(missing); start += chunk {
+		part := missing[start:min(start+chunk, len(missing))]
+		args := make([]any, len(part)+1)
+		placeholders := make([]string, len(part))
+		args[0] = s.JID
+		for i, addr := range part {
+			args[i+1] = addr
+			placeholders[i] = fmt.Sprintf("$%d", i+2)
+		}
+		rows, err := s.db.Query(ctx, fmt.Sprintf(getManyIdentitiesQueryGeneric, strings.Join(placeholders, ",")), args...)
+		found := make(map[string][32]byte, len(part))
+		err = sessionScanner.NewRowIter(rows, err).Iter(func(tuple addressSessionTuple) (bool, error) {
+			if len(tuple.Session) == 32 {
+				found[tuple.Address] = *(*[32]byte)(tuple.Session)
+			}
+			return true, nil
+		})
+		if err != nil {
+			return err
+		}
+		s.identityCacheLock.Lock()
+		maps.Copy(s.identityCache, found)
+		s.identityCacheLock.Unlock()
+	}
+	return nil
 }
 
 const (
@@ -237,6 +351,7 @@ func (s *SQLStore) deleteAllSenderKeys(ctx context.Context, phone string) error 
 
 func (s *SQLStore) deleteAllIdentityKeys(ctx context.Context, phone string) error {
 	_, err := s.db.Exec(ctx, deleteAllIdentityKeysQuery, s.JID, phone+":%")
+	s.forgetIdentitiesOf(phone)
 	return err
 }
 
@@ -252,6 +367,8 @@ func (s *SQLStore) MigratePNToLID(ctx context.Context, pn, lid types.JID) error 
 	}
 	var sessionsUpdated, identityKeysUpdated, senderKeysUpdated int64
 	lidSignal := lid.SignalAddressUser()
+	// The migration overwrites the LID's identity rows in SQL.
+	defer s.forgetIdentitiesOf(lidSignal)
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		res, err := s.db.Exec(ctx, migratePNToLIDSessionsQuery, s.JID, pnSignal, lidSignal)
 		if err != nil {

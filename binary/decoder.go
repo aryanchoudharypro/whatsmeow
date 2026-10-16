@@ -65,7 +65,7 @@ func (r *binaryDecoder) readIntN(n int, littleEndian bool) (int, error) {
 
 	var ret int
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var curShift int
 		if littleEndian {
 			curShift = i
@@ -349,7 +349,7 @@ func (r *binaryDecoder) readAttributes(n int) (Attrs, error) {
 	}
 
 	ret := make(Attrs, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		keyIfc, err := r.read(true)
 		if err != nil {
 			return nil, err
@@ -376,7 +376,7 @@ func (r *binaryDecoder) readList(tag int) ([]Node, error) {
 	}
 
 	ret := make([]Node, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		if err := r.readNodeInto(&ret[i]); err != nil {
 			return nil, err
 		}

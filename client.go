@@ -168,7 +168,9 @@ type Client struct {
 	messageSendLock sync.Mutex
 
 	tcTokenSenderTS            map[types.JID]time.Time
+	tcTokenSenderTSLoaded      map[types.JID]struct{}
 	tcTokenSenderTSLock        sync.Mutex
+	tcTokenIssuing             map[types.JID]struct{}
 	lastTCTokenSenderTSCleanup time.Time
 	tcTokenDBPruneLock         sync.Mutex
 	lastTCTokenDBPrune         time.Time
@@ -332,10 +334,12 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 
 		historySyncNotifications: make(chan historySyncRequest, 32),
 
-		tcTokenSenderTS:  make(map[types.JID]time.Time),
-		groupCache:       make(map[types.JID]*groupMetaCache),
-		userDevicesCache: make(map[types.JID]deviceCache),
-		calls:            make(map[string]*callState),
+		tcTokenSenderTS:       make(map[types.JID]time.Time),
+		tcTokenSenderTSLoaded: make(map[types.JID]struct{}),
+		tcTokenIssuing:        make(map[types.JID]struct{}),
+		groupCache:            make(map[types.JID]*groupMetaCache),
+		userDevicesCache:      make(map[types.JID]deviceCache),
+		calls:                 make(map[string]*callState),
 
 		recentMessagesMap:      make(map[recentMessageKey]RecentMessage, recentMessagesSize),
 		sessionRecreateHistory: make(map[types.JID]time.Time),

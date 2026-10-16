@@ -62,7 +62,7 @@ func (cli *Client) handleEncryptNotification(ctx context.Context, node *waBinary
 			senderTS := cli.getTCTokenSenderTS(storageLID)
 			if !senderTS.IsZero() {
 				cli.Log.Debugf("Identity changed for %s, re-issuing tctoken", from)
-				go cli.issuePrivacyTokenAndSave(storageLID, senderTS)
+				go cli.issuePrivacyTokenAndSave(storageLID, senderTS, false)
 			}
 		}
 		cli.dispatchEvent(&events.IdentityChange{JID: from, Timestamp: ts})

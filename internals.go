@@ -22,6 +22,7 @@ import (
 	"go.mau.fi/whatsmeow/proto/waMsgApplication"
 	"go.mau.fi/whatsmeow/proto/waMsgTransport"
 	"go.mau.fi/whatsmeow/proto/waServerSync"
+	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/socket"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -101,6 +102,10 @@ func (int *DangerousInternalClient) GetStatusBroadcastRecipients(ctx context.Con
 
 func (int *DangerousInternalClient) HandleCallEvent(ctx context.Context, node *waBinary.Node) {
 	int.c.handleCallEvent(ctx, node)
+}
+
+func (int *DangerousInternalClient) LearnCallerLIDPN(ctx context.Context, from types.JID, offer *waBinary.Node) {
+	int.c.learnCallerLIDPN(ctx, from, offer)
 }
 
 func (int *DangerousInternalClient) OnCallOffer(ctx context.Context, child *waBinary.Node, meta types.BasicCallMeta, remote types.CallRemoteMeta) {
@@ -359,6 +364,18 @@ func (int *DangerousInternalClient) DoHandshake(fs *socket.FrameSocket, ephemera
 	return int.c.doHandshake(fs, ephemeralKP, serverStatic)
 }
 
+func (int *DangerousInternalClient) DoXXHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair, payload []byte) (*socket.NoiseHandshake, *serverCertChain, error) {
+	return int.c.doXXHandshake(fs, ephemeralKP, payload)
+}
+
+func (int *DangerousInternalClient) DoIKHandshake(fs *socket.FrameSocket, ephemeralKP keys.KeyPair, serverStatic [32]byte, payload []byte) (*socket.NoiseHandshake, *serverCertChain, error) {
+	return int.c.doIKHandshake(fs, ephemeralKP, serverStatic, payload)
+}
+
+func (int *DangerousInternalClient) FinishXXHandshake(nh *socket.NoiseHandshake, fs *socket.FrameSocket, ephemeralKP keys.KeyPair, serverHello *waWa6.HandshakeMessage_ServerHello, payload []byte) (*serverCertChain, error) {
+	return int.c.finishXXHandshake(nh, fs, ephemeralKP, serverHello, payload)
+}
+
 func (int *DangerousInternalClient) KeepAliveLoop(ctx, connCtx context.Context) {
 	int.c.keepAliveLoop(ctx, connCtx)
 }
@@ -511,6 +528,10 @@ func (int *DangerousInternalClient) GetNewsletterInfo(ctx context.Context, input
 	return int.c.getNewsletterInfo(ctx, input, fetchViewerMeta)
 }
 
+func (int *DangerousInternalClient) NewsletterMembership(ctx context.Context, mutation, resultField string, jid types.JID) error {
+	return int.c.newsletterMembership(ctx, mutation, resultField, jid)
+}
+
 func (int *DangerousInternalClient) HandleEncryptNotification(ctx context.Context, node *waBinary.Node) {
 	int.c.handleEncryptNotification(ctx, node)
 }
@@ -649,6 +670,18 @@ func (int *DangerousInternalClient) HandleChatState(ctx context.Context, node *w
 
 func (int *DangerousInternalClient) HandlePresence(ctx context.Context, node *waBinary.Node) {
 	int.c.handlePresence(ctx, node)
+}
+
+func (int *DangerousInternalClient) TrackPresenceSubscription(jid types.JID, subscribed bool) {
+	int.c.trackPresenceSubscription(jid, subscribed)
+}
+
+func (int *DangerousInternalClient) IsPresenceSubscriptionTracked(jid types.JID) bool {
+	return int.c.isPresenceSubscriptionTracked(jid)
+}
+
+func (int *DangerousInternalClient) ResubscribePresences(ctx context.Context) {
+	int.c.resubscribePresences(ctx)
 }
 
 func (int *DangerousInternalClient) ParsePrivacySettings(privacyNode *waBinary.Node, settings *types.PrivacySettings) *events.PrivacySettings {
@@ -871,8 +904,8 @@ func (int *DangerousInternalClient) DeleteExpiredPrivacyTokens() {
 	int.c.deleteExpiredPrivacyTokens()
 }
 
-func (int *DangerousInternalClient) IssuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.Time) {
-	int.c.issuePrivacyTokenAndSave(jid, senderTimestamp)
+func (int *DangerousInternalClient) IssuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.Time, onlyIfDue bool) {
+	int.c.issuePrivacyTokenAndSave(jid, senderTimestamp, onlyIfDue)
 }
 
 func (int *DangerousInternalClient) IssuePrivacyToken(ctx context.Context, jid types.JID, timestamp time.Time) (*waBinary.Node, error) {

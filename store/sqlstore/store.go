@@ -1184,6 +1184,41 @@ func (s *SQLStore) PutConnState(ctx context.Context, key string, value []byte) e
 	return err
 }
 
+const (
+	getTCTokenIssuedQuery = `SELECT issued_at FROM whatsmeow_fork_tctoken_issued WHERE our_jid=$1 AND their_jid=$2`
+	putTCTokenIssuedQuery = `
+		INSERT INTO whatsmeow_fork_tctoken_issued (our_jid, their_jid, issued_at) VALUES ($1, $2, $3)
+		ON CONFLICT (our_jid, their_jid) DO UPDATE SET issued_at=excluded.issued_at
+		WHERE excluded.issued_at > whatsmeow_fork_tctoken_issued.issued_at
+	`
+	deleteExpiredTCTokenIssuedQuery = `DELETE FROM whatsmeow_fork_tctoken_issued WHERE our_jid=$1 AND issued_at < $2`
+)
+
+// GetTCTokenIssued returns when our privacy token was last issued to the
+// given user, or the zero time if it never was.
+func (s *SQLStore) GetTCTokenIssued(ctx context.Context, user types.JID) (time.Time, error) {
+	var ts int64
+	err := s.db.QueryRow(ctx, getTCTokenIssuedQuery, s.JID, user.ToNonAD().String()).Scan(&ts)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
+	} else if err != nil {
+		return time.Time{}, err
+	}
+	return time.Unix(ts, 0), nil
+}
+
+// PutTCTokenIssued records that our privacy token was issued to the user.
+func (s *SQLStore) PutTCTokenIssued(ctx context.Context, user types.JID, ts time.Time) error {
+	_, err := s.db.Exec(ctx, putTCTokenIssuedQuery, s.JID, user.ToNonAD().String(), ts.Unix())
+	return err
+}
+
+// DeleteExpiredTCTokenIssued forgets issuances older than the cutoff.
+func (s *SQLStore) DeleteExpiredTCTokenIssued(ctx context.Context, cutoff time.Time) error {
+	_, err := s.db.Exec(ctx, deleteExpiredTCTokenIssuedQuery, s.JID, cutoff.Unix())
+	return err
+}
+
 func (s *SQLStore) DeleteExpiredPrivacyTokens(ctx context.Context, cutoff time.Time) (int64, error) {
 	res, err := s.db.Exec(ctx, deleteExpiredPrivacyTokens, s.JID, cutoff.Unix())
 	if err != nil {

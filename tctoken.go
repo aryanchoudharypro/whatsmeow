@@ -70,12 +70,48 @@ func (cli *Client) resolveTCTokenStorageLID(ctx context.Context, jid types.JID) 
 	return lid.ToNonAD()
 }
 
-// getTCTokenSenderTS reads the in-memory sender timestamp for a JID.
+// tcTokenIssueStore is implemented by stores that remember when our token
+// was issued to each contact independently of tokens received from them
+// (sqlstore).
+type tcTokenIssueStore interface {
+	GetTCTokenIssued(ctx context.Context, user types.JID) (time.Time, error)
+	PutTCTokenIssued(ctx context.Context, user types.JID, ts time.Time) error
+	DeleteExpiredTCTokenIssued(ctx context.Context, cutoff time.Time) error
+}
+
+// getTCTokenSenderTS returns when our token was last issued to a JID. The
+// in-memory value is filled from the database the first time a JID is asked
+// about, so a restart doesn't make every contact look like one we never
+// issued to - which re-issued our token to everyone messaged after it.
 func (cli *Client) getTCTokenSenderTS(jid types.JID) time.Time {
+	key := jid.ToNonAD()
+	cli.tcTokenSenderTSLock.Lock()
+	ts, ok := cli.tcTokenSenderTS[key]
+	_, loaded := cli.tcTokenSenderTSLoaded[key]
+	cli.tcTokenSenderTSLock.Unlock()
+	if ok || loaded {
+		return ts
+	}
+	issueStore, canLoad := cli.Store.PrivacyTokens.(tcTokenIssueStore)
+	if !canLoad {
+		return ts
+	}
+	stored, err := issueStore.GetTCTokenIssued(cli.BackgroundEventCtx, key)
+	if err != nil {
+		cli.Log.Debugf("Failed to load tctoken issue time for %s: %v", key, err)
+		return ts
+	}
 	cli.tcTokenSenderTSLock.Lock()
 	defer cli.tcTokenSenderTSLock.Unlock()
-
-	return cli.tcTokenSenderTS[jid.ToNonAD()]
+	cli.tcTokenSenderTSLoaded[key] = struct{}{}
+	if cur, ok := cli.tcTokenSenderTS[key]; ok {
+		return cur
+	}
+	if !stored.IsZero() && !stored.Before(currentTCTokenCutoffTimestamp()) {
+		cli.tcTokenSenderTS[key] = stored
+		return stored
+	}
+	return time.Time{}
 }
 
 func (cli *Client) validateAndSetTCTokenSenderTS(jid types.JID, storedSenderTimestamp time.Time) bool {
@@ -114,6 +150,7 @@ func (cli *Client) unlockedCleanupTCTokenSenderTSMap() {
 			delete(cli.tcTokenSenderTS, jid)
 		}
 	}
+	clear(cli.tcTokenSenderTSLoaded)
 }
 
 // ensureTCToken returns a stored non-expired tctoken for the given JID, if available.
@@ -148,6 +185,11 @@ func (cli *Client) deleteExpiredPrivacyTokens() {
 	cli.lastTCTokenDBPrune = time.Now()
 	go func() {
 		defer cli.tcTokenDBPruneLock.Unlock()
+		if issueStore, ok := cli.Store.PrivacyTokens.(tcTokenIssueStore); ok {
+			if err := issueStore.DeleteExpiredTCTokenIssued(cli.BackgroundEventCtx, currentTCTokenCutoffTimestamp()); err != nil {
+				cli.Log.Warnf("Failed to remove expired tctoken issue times from DB: %v", err)
+			}
+		}
 		deleted, err := cli.Store.PrivacyTokens.DeleteExpiredPrivacyTokens(cli.BackgroundEventCtx, currentTCTokenCutoffTimestamp())
 		if err != nil {
 			cli.Log.Warnf("Failed to remove expired tctokens from DB: %v", err)
@@ -158,15 +200,41 @@ func (cli *Client) deleteExpiredPrivacyTokens() {
 }
 
 // Only called when a bucket boundary has been crossed since the last issuance.
-func (cli *Client) issuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.Time) {
+//
+// With onlyIfDue set (the send path), it re-checks under the in-flight guard
+// that this bucket still has no issuance, since another send may have just
+// done it.
+func (cli *Client) issuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.Time, onlyIfDue bool) {
 	ctx := cli.BackgroundEventCtx
 	storageJID := jid.ToNonAD()
+	// Several quick sends to the same contact each see "not issued this
+	// bucket" until the first issue lands; only one may go to the server.
+	cli.tcTokenSenderTSLock.Lock()
+	if _, busy := cli.tcTokenIssuing[storageJID]; busy {
+		cli.tcTokenSenderTSLock.Unlock()
+		return
+	}
+	cli.tcTokenIssuing[storageJID] = struct{}{}
+	cli.tcTokenSenderTSLock.Unlock()
+	defer func() {
+		cli.tcTokenSenderTSLock.Lock()
+		delete(cli.tcTokenIssuing, storageJID)
+		cli.tcTokenSenderTSLock.Unlock()
+	}()
+	if onlyIfDue && !shouldSendNewTCToken(cli.getTCTokenSenderTS(storageJID)) {
+		return
+	}
 	_, err := cli.issuePrivacyToken(ctx, storageJID, senderTimestamp)
 	if err != nil {
 		cli.Log.Errorf("Failed to issue privacy token for %s: %v", jid, err)
 		return
 	}
 	cli.setTCTokenSenderTS(storageJID, senderTimestamp)
+	if issueStore, ok := cli.Store.PrivacyTokens.(tcTokenIssueStore); ok {
+		if err = issueStore.PutTCTokenIssued(ctx, storageJID, senderTimestamp); err != nil {
+			cli.Log.Errorf("Failed to persist tctoken issue time for %s: %v", jid, err)
+		}
+	}
 	// TODO replace with an UPDATE call instead of get+put
 	existing, err := cli.Store.PrivacyTokens.GetPrivacyToken(ctx, storageJID)
 	if err != nil {

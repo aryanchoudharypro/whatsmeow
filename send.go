@@ -957,7 +957,7 @@ func (cli *Client) sendDM(
 
 	storageJID := cli.resolveTCTokenStorageLID(ctx, to)
 	if shouldSendTCTokenInChatAction(to) && shouldSendNewTCToken(cli.getTCTokenSenderTS(storageJID)) {
-		go cli.issuePrivacyTokenAndSave(storageJID, time.Now())
+		go cli.issuePrivacyTokenAndSave(storageJID, time.Now(), true)
 	}
 
 	return phash, data, nil

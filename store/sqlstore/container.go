@@ -113,17 +113,20 @@ func (c *Container) Upgrade(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.db.Exec(ctx, createConnStateTableQuery)
-	if err != nil {
-		return fmt.Errorf("failed to create connection state table: %w", err)
+	for _, query := range forkTableQueries {
+		if _, err = c.db.Exec(ctx, query); err != nil {
+			return fmt.Errorf("failed to create fork table: %w", err)
+		}
 	}
 	return nil
 }
 
-// The connection state table is created here rather than by a numbered
-// upgrade: this fork's upgrade numbers would collide with the ones upstream
-// adds later, and a database that already ran a fork upgrade under a number
-// would then skip upstream's.
+// The fork's own tables are created here rather than by numbered upgrades:
+// this fork's upgrade numbers would collide with the ones upstream adds
+// later, and a database that already ran a fork upgrade under a number would
+// then skip upstream's.
+var forkTableQueries = []string{createConnStateTableQuery, createTCTokenIssuedTableQuery}
+
 const createConnStateTableQuery = `
 CREATE TABLE IF NOT EXISTS whatsmeow_fork_conn_state (
 	our_jid TEXT,
@@ -131,6 +134,19 @@ CREATE TABLE IF NOT EXISTS whatsmeow_fork_conn_state (
 	value   bytea NOT NULL,
 
 	PRIMARY KEY (our_jid, key),
+	FOREIGN KEY (our_jid) REFERENCES whatsmeow_device(jid) ON DELETE CASCADE ON UPDATE CASCADE
+)`
+
+// createTCTokenIssuedTableQuery remembers when we last had the server issue
+// our privacy token to each contact, whether or not they ever sent us theirs,
+// so a restart doesn't re-issue to everyone we message.
+const createTCTokenIssuedTableQuery = `
+CREATE TABLE IF NOT EXISTS whatsmeow_fork_tctoken_issued (
+	our_jid   TEXT,
+	their_jid TEXT,
+	issued_at BIGINT NOT NULL,
+
+	PRIMARY KEY (our_jid, their_jid),
 	FOREIGN KEY (our_jid) REFERENCES whatsmeow_device(jid) ON DELETE CASCADE ON UPDATE CASCADE
 )`
 

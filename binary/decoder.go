@@ -9,6 +9,27 @@ import (
 	"go.mau.fi/whatsmeow/types"
 )
 
+// Pre-boxed token values so returning a token as `any` doesn't heap-allocate a string header per read.
+var (
+	singleByteTokenIfaces = func() []any {
+		out := make([]any, len(token.SingleByteTokens))
+		for i, t := range token.SingleByteTokens {
+			out[i] = t
+		}
+		return out
+	}()
+	doubleByteTokenIfaces = func() [][]any {
+		out := make([][]any, len(token.DoubleByteTokens))
+		for i, dict := range token.DoubleByteTokens {
+			out[i] = make([]any, len(dict))
+			for j, t := range dict {
+				out[i][j] = t
+			}
+		}
+		return out
+	}()
+)
+
 type binaryDecoder struct {
 	data  []byte
 	index int
@@ -87,6 +108,7 @@ func (r *binaryDecoder) readPacked8(tag int) (string, error) {
 	}
 
 	var build strings.Builder
+	build.Grow(2 * int(startByte&127))
 
 	for i := 0; i < int(startByte&127); i++ {
 		currByte, err := r.readByte()
@@ -109,7 +131,7 @@ func (r *binaryDecoder) readPacked8(tag int) (string, error) {
 	}
 
 	ret := build.String()
-	if startByte>>7 != 0 {
+	if startByte>>7 != 0 && len(ret) > 0 {
 		ret = ret[:len(ret)-1]
 	}
 	return ret, nil
@@ -203,6 +225,9 @@ func (r *binaryDecoder) read(string bool) (any, error) {
 			return "", err
 		}
 
+		if d := tag - token.Dictionary0; i >= 0 && i < len(doubleByteTokenIfaces[d]) {
+			return doubleByteTokenIfaces[d][i], nil
+		}
 		return token.GetDoubleToken(tag-token.Dictionary0, i)
 	case token.FBJID:
 		return r.readFBJID()
@@ -216,30 +241,45 @@ func (r *binaryDecoder) read(string bool) (any, error) {
 		return r.readPacked8(tag)
 	default:
 		if tag >= 1 && tag < len(token.SingleByteTokens) {
-			return token.SingleByteTokens[tag], nil
+			return singleByteTokenIfaces[tag], nil
 		}
 		return "", fmt.Errorf("%w %d at position %d", ErrInvalidToken, tag, r.index)
 	}
 }
 
+// readString reads a value that must be a string (or empty). A malformed
+// frame can put a JID or list there; that's an error, not a panic.
+func (r *binaryDecoder) readString() (string, bool, error) {
+	val, err := r.read(true)
+	if err != nil {
+		return "", false, err
+	}
+	switch v := val.(type) {
+	case nil:
+		return "", false, nil
+	case string:
+		return v, true, nil
+	default:
+		return "", false, fmt.Errorf("%w: expected string at position %d, got %T", ErrInvalidType, r.index, val)
+	}
+}
+
 func (r *binaryDecoder) readJIDPair() (any, error) {
-	user, err := r.read(true)
+	user, _, err := r.readString()
 	if err != nil {
 		return nil, err
 	}
-	server, err := r.read(true)
+	server, hasServer, err := r.readString()
 	if err != nil {
 		return nil, err
-	} else if server == nil {
+	} else if !hasServer {
 		return nil, ErrInvalidJIDType
-	} else if user == nil {
-		return types.NewJID("", server.(string)), nil
 	}
-	return types.NewJID(user.(string), server.(string)), nil
+	return types.NewJID(user, server), nil
 }
 
 func (r *binaryDecoder) readInteropJID() (any, error) {
-	user, err := r.read(true)
+	user, _, err := r.readString()
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +298,7 @@ func (r *binaryDecoder) readInteropJID() (any, error) {
 		return nil, fmt.Errorf("%w: expected %q, got %q", ErrInvalidJIDType, types.InteropServer, server)
 	}
 	return types.JID{
-		User:       user.(string),
+		User:       user,
 		Device:     uint16(device),
 		Integrator: uint16(integrator),
 		Server:     types.InteropServer,
@@ -266,7 +306,7 @@ func (r *binaryDecoder) readInteropJID() (any, error) {
 }
 
 func (r *binaryDecoder) readFBJID() (any, error) {
-	user, err := r.read(true)
+	user, _, err := r.readString()
 	if err != nil {
 		return nil, err
 	}
@@ -281,9 +321,9 @@ func (r *binaryDecoder) readFBJID() (any, error) {
 		return nil, fmt.Errorf("%w: expected %q, got %q", ErrInvalidJIDType, types.MessengerServer, server)
 	}
 	return types.JID{
-		User:   user.(string),
+		User:   user,
 		Device: uint16(device),
-		Server: server.(string),
+		Server: types.MessengerServer,
 	}, nil
 }
 
@@ -296,11 +336,11 @@ func (r *binaryDecoder) readADJID() (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	user, err := r.read(true)
+	user, _, err := r.readString()
 	if err != nil {
 		return nil, err
 	}
-	return types.NewADJID(user.(string), agent, device), nil
+	return types.NewADJID(user, agent, device), nil
 }
 
 func (r *binaryDecoder) readAttributes(n int) (Attrs, error) {
@@ -308,7 +348,7 @@ func (r *binaryDecoder) readAttributes(n int) (Attrs, error) {
 		return nil, nil
 	}
 
-	ret := make(Attrs)
+	ret := make(Attrs, n)
 	for i := 0; i < n; i++ {
 		keyIfc, err := r.read(true)
 		if err != nil {
@@ -337,13 +377,9 @@ func (r *binaryDecoder) readList(tag int) ([]Node, error) {
 
 	ret := make([]Node, size)
 	for i := 0; i < size; i++ {
-		n, err := r.readNode()
-
-		if err != nil {
+		if err := r.readNodeInto(&ret[i]); err != nil {
 			return nil, err
 		}
-
-		ret[i] = *n
 	}
 
 	return ret, nil
@@ -351,36 +387,42 @@ func (r *binaryDecoder) readList(tag int) ([]Node, error) {
 
 func (r *binaryDecoder) readNode() (*Node, error) {
 	ret := &Node{}
+	if err := r.readNodeInto(ret); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (r *binaryDecoder) readNodeInto(ret *Node) error {
 
 	size, err := r.readInt8(false)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	listSize, err := r.readListSize(size)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	rawDesc, err := r.read(true)
+	ret.Tag, _, err = r.readString()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	ret.Tag = rawDesc.(string)
 	if listSize == 0 || ret.Tag == "" {
-		return nil, ErrInvalidNode
+		return ErrInvalidNode
 	}
 
 	ret.Attrs, err = r.readAttributes((listSize - 1) >> 1)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if listSize%2 == 1 {
-		return ret, nil
+		return nil
 	}
 
 	ret.Content, err = r.read(false)
-	return ret, err
+	return err
 }
 
 func (r *binaryDecoder) readBytesOrString(length int, asString bool) (any, error) {

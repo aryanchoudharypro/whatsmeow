@@ -967,6 +967,11 @@ func (cli *Client) makeFrameHandler(queue chan *waBinary.Node) func(ctx context.
 }
 
 func (cli *Client) handleFrame(ctx context.Context, data []byte, queue chan *waBinary.Node) {
+	defer func() {
+		if err := recover(); err != nil {
+			cli.Log.Errorf("Panic while handling frame: %v\n%s", err, debug.Stack())
+		}
+	}()
 	decompressed, err := waBinary.Unpack(data)
 	if err != nil {
 		cli.Log.Warnf("Failed to decompress frame: %v", err)
@@ -1046,8 +1051,19 @@ Loop:
 			doneChan := make(chan struct{})
 			start := time.Now()
 			go func() {
+				// One bad stanza must not take the whole process down with it.
+				handled := false
+				defer func() {
+					if err := recover(); err != nil {
+						cli.Log.Errorf("Node handler panicked while handling %s: %v\n%s", node.Tag, err, debug.Stack())
+						if !handled {
+							close(doneChan)
+						}
+					}
+				}()
 				cli.nodeHandlers[node.Tag](evtCtx, node)
 				duration := time.Since(start)
+				handled = true
 				close(doneChan)
 				if duration > 5*time.Second {
 					cli.Log.Warnf("Node handling took %s for %s", duration, node)

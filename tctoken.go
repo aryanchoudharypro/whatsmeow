@@ -211,6 +211,14 @@ func (cli *Client) issuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.
 	// bucket" until the first issue lands; only one may go to the server.
 	cli.tcTokenSenderTSLock.Lock()
 	if _, busy := cli.tcTokenIssuing[storageJID]; busy {
+		if !onlyIfDue {
+			// A forced re-issue (identity change) must not be lost to an
+			// issue that may have gone out before the change: run it after.
+			if cli.tcTokenReissue == nil {
+				cli.tcTokenReissue = make(map[types.JID]time.Time)
+			}
+			cli.tcTokenReissue[storageJID] = senderTimestamp
+		}
 		cli.tcTokenSenderTSLock.Unlock()
 		return
 	}
@@ -219,7 +227,12 @@ func (cli *Client) issuePrivacyTokenAndSave(jid types.JID, senderTimestamp time.
 	defer func() {
 		cli.tcTokenSenderTSLock.Lock()
 		delete(cli.tcTokenIssuing, storageJID)
+		reissueTS, reissue := cli.tcTokenReissue[storageJID]
+		delete(cli.tcTokenReissue, storageJID)
 		cli.tcTokenSenderTSLock.Unlock()
+		if reissue {
+			go cli.issuePrivacyTokenAndSave(storageJID, reissueTS, false)
+		}
 	}()
 	if onlyIfDue && !shouldSendNewTCToken(cli.getTCTokenSenderTS(storageJID)) {
 		return

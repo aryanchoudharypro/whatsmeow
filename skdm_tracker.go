@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"strconv"
+	"strings"
 	"sync"
 
 	"go.mau.fi/libsignal/protocol"
@@ -166,13 +167,20 @@ func (cli *Client) alternateJIDs(ctx context.Context, jid types.JID) []types.JID
 }
 
 // forgetSKDMDevice makes a device need our sender key again, in one group or
-// (with an empty group) all of them.
+// (with an empty group) all of them. Memory and database change under the
+// same lock, so a concurrent first load can't bring a forgotten record back.
 func (cli *Client) forgetSKDMDevice(ctx context.Context, group, device types.JID) {
 	if cli.Store == nil {
 		return
 	}
 	devices := cli.alternateJIDs(ctx, device)
+	db := cli.skdmStore()
+	groupStr := ""
+	if !group.IsEmpty() {
+		groupStr = group.String()
+	}
 	cli.skdm.lock.Lock()
+	defer cli.skdm.lock.Unlock()
 	for groupJID, state := range cli.skdm.groups {
 		if group.IsEmpty() || groupJID == group {
 			for _, d := range devices {
@@ -180,14 +188,8 @@ func (cli *Client) forgetSKDMDevice(ctx context.Context, group, device types.JID
 			}
 		}
 	}
-	cli.skdm.lock.Unlock()
-	db := cli.skdmStore()
 	if db == nil {
 		return
-	}
-	groupStr := ""
-	if !group.IsEmpty() {
-		groupStr = group.String()
 	}
 	for _, d := range devices {
 		if err := db.ForgetSenderKeyDevice(ctx, groupStr, skdmDeviceKey(d)); err != nil {
@@ -203,19 +205,18 @@ func (cli *Client) forgetSKDMUser(ctx context.Context, user types.JID) {
 		return
 	}
 	users := cli.alternateJIDs(ctx, user.ToNonAD())
+	db := cli.skdmStore()
 	cli.skdm.lock.Lock()
+	defer cli.skdm.lock.Unlock()
 	for _, state := range cli.skdm.groups {
 		for device := range state.warm {
 			for _, u := range users {
-				prefix := skdmUserKey(u) + ":"
-				if len(device) > len(prefix) && device[:len(prefix)] == prefix {
+				if strings.HasPrefix(device, skdmUserKey(u)+":") {
 					delete(state.warm, device)
 				}
 			}
 		}
 	}
-	cli.skdm.lock.Unlock()
-	db := cli.skdmStore()
 	if db == nil {
 		return
 	}

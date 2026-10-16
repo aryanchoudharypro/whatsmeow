@@ -52,10 +52,14 @@ func TestOfflineReceiptsGroupByChatAndAuthor(t *testing.T) {
 	if single := buildAggregateReceipt(first.attrs, []string{"X"}, "1"); single.Content != nil {
 		t.Fatal("single receipt must have no list")
 	}
-	// Flushing (here without a connection) empties the buffer.
+	// Without a connection a flush keeps everything for the next one.
 	cli.flushOfflineReceipts(ctx)
-	if len(buf.order) != 0 || buf.timer != nil {
-		t.Fatal("not flushed")
+	if len(buf.order) != 4 || len(buf.groups[buf.order[0]].ids) != 3 || buf.timer != nil {
+		t.Fatal("receipts lost while disconnected")
+	}
+	buf.reset()
+	if len(buf.order) != 0 {
+		t.Fatal("not reset")
 	}
 	cli.offlineSyncDone.Store(true)
 	if cli.bufferOfflineReceipt(ctx, "late", waBinary.Attrs{"to": dm}) {

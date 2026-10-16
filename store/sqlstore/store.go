@@ -13,7 +13,6 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -58,6 +57,12 @@ type SQLStore struct {
 	// each hit SQL for a key that almost never changes.
 	identityCache     map[string][32]byte
 	identityCacheLock sync.RWMutex
+	// identityGen counts forgets, so a database read that started before
+	// one isn't cached afterwards.
+	identityGen uint64
+	// identityPending holds addresses written inside a transaction that may
+	// not have committed yet; they aren't cached until this passes.
+	identityPending map[string]time.Time
 }
 
 // NewSQLStore creates a new SQLStore with the given database container and user JID.
@@ -72,6 +77,7 @@ func NewSQLStore(c *Container, jid types.JID) *SQLStore {
 
 		migratedPNSessionsCache: exsync.NewSet[string](),
 		identityCache:           make(map[string][32]byte),
+		identityPending:         make(map[string]time.Time),
 	}
 }
 
@@ -94,6 +100,10 @@ func (s *SQLStore) inTxn(ctx context.Context) bool {
 	return ok
 }
 
+// identityTxnWindow is how long an identity written inside a transaction
+// stays uncached; the cache can't see the commit.
+const identityTxnWindow = 30 * time.Second
+
 func (s *SQLStore) cachedIdentity(address string) ([32]byte, bool) {
 	s.identityCacheLock.RLock()
 	key, ok := s.identityCache[address]
@@ -101,15 +111,43 @@ func (s *SQLStore) cachedIdentity(address string) ([32]byte, bool) {
 	return key, ok
 }
 
-func (s *SQLStore) cacheIdentity(address string, key [32]byte) {
+func (s *SQLStore) identityGeneration() uint64 {
+	s.identityCacheLock.RLock()
+	defer s.identityCacheLock.RUnlock()
+	return s.identityGen
+}
+
+// cacheIdentity caches a key read or written at generation gen, unless
+// something was forgotten since or the address has an uncommitted write.
+func (s *SQLStore) cacheIdentity(address string, key [32]byte, gen uint64) {
 	s.identityCacheLock.Lock()
+	defer s.identityCacheLock.Unlock()
+	if s.identityGen != gen {
+		return
+	}
+	if until, ok := s.identityPending[address]; ok {
+		if time.Now().Before(until) {
+			return
+		}
+		delete(s.identityPending, address)
+	}
 	s.identityCache[address] = key
-	s.identityCacheLock.Unlock()
 }
 
 func (s *SQLStore) forgetIdentity(address string) {
 	s.identityCacheLock.Lock()
 	delete(s.identityCache, address)
+	s.identityGen++
+	s.identityCacheLock.Unlock()
+}
+
+// forgetIdentityInTxn forgets an address written inside a transaction and
+// keeps it out of the cache until the transaction has surely ended.
+func (s *SQLStore) forgetIdentityInTxn(address string) {
+	s.identityCacheLock.Lock()
+	delete(s.identityCache, address)
+	s.identityGen++
+	s.identityPending[address] = time.Now().Add(identityTxnWindow)
 	s.identityCacheLock.Unlock()
 }
 
@@ -123,6 +161,7 @@ func (s *SQLStore) forgetIdentitiesOf(user string) {
 			delete(s.identityCache, addr)
 		}
 	}
+	s.identityGen++
 	s.identityCacheLock.Unlock()
 }
 
@@ -130,15 +169,18 @@ func (s *SQLStore) PutIdentity(ctx context.Context, address string, key [32]byte
 	if cached, ok := s.cachedIdentity(address); ok && cached == key {
 		return nil
 	}
+	inTxn := s.inTxn(ctx)
+	if inTxn {
+		s.forgetIdentityInTxn(address)
+	}
+	gen := s.identityGeneration()
 	_, err := s.db.Exec(ctx, putIdentityQuery, s.JID, address, key[:])
 	if err != nil {
 		s.forgetIdentity(address)
 		return err
 	}
-	if s.inTxn(ctx) {
-		s.forgetIdentity(address)
-	} else {
-		s.cacheIdentity(address, key)
+	if !inTxn {
+		s.cacheIdentity(address, key, gen)
 	}
 	return nil
 }
@@ -159,6 +201,7 @@ func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [3
 	if cached, ok := s.cachedIdentity(address); ok {
 		return cached == key, nil
 	}
+	gen := s.identityGeneration()
 	var existingIdentity []byte
 	err := s.db.QueryRow(ctx, getIdentityQuery, s.JID, address).Scan(&existingIdentity)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -171,7 +214,7 @@ func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [3
 	}
 	existing := *(*[32]byte)(existingIdentity)
 	if !s.inTxn(ctx) {
-		s.cacheIdentity(address, existing)
+		s.cacheIdentity(address, existing, gen)
 	}
 	return existing == key, nil
 }
@@ -193,6 +236,7 @@ func (s *SQLStore) PrefetchIdentities(ctx context.Context, addresses []string) e
 	if len(missing) == 0 || s.inTxn(ctx) {
 		return nil
 	}
+	gen := s.identityGeneration()
 	// SQLite allows 32766 parameters; stay far below it.
 	const chunk = 500
 	for start := 0; start < len(missing); start += chunk {
@@ -215,9 +259,9 @@ func (s *SQLStore) PrefetchIdentities(ctx context.Context, addresses []string) e
 		if err != nil {
 			return err
 		}
-		s.identityCacheLock.Lock()
-		maps.Copy(s.identityCache, found)
-		s.identityCacheLock.Unlock()
+		for addr, key := range found {
+			s.cacheIdentity(addr, key, gen)
+		}
 	}
 	return nil
 }
@@ -367,8 +411,10 @@ func (s *SQLStore) MigratePNToLID(ctx context.Context, pn, lid types.JID) error 
 	}
 	var sessionsUpdated, identityKeysUpdated, senderKeysUpdated int64
 	lidSignal := lid.SignalAddressUser()
-	// The migration overwrites the LID's identity rows in SQL.
+	// The migration overwrites the LID's identity rows and deletes the
+	// PN's; forget both once it has committed, in case a read raced it.
 	defer s.forgetIdentitiesOf(lidSignal)
+	defer s.forgetIdentitiesOf(pnSignal)
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
 		res, err := s.db.Exec(ctx, migratePNToLIDSessionsQuery, s.JID, pnSignal, lidSignal)
 		if err != nil {

@@ -486,12 +486,14 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	ag := respNode.AttrGetter()
 	resp.ServerID = types.MessageServerID(ag.OptionalInt("server_id"))
 	resp.Timestamp = ag.UnixTime("t")
+	expectedPHash := ag.OptionalString("phash")
 	if errorCode := ag.Int("error"); errorCode != 0 {
 		err = fmt.Errorf("%w %d", ErrServerReturnedError, errorCode)
-	} else if onAccepted != nil {
+	} else if onAccepted != nil && (expectedPHash == "" || expectedPHash == phash) {
+		// A participant hash mismatch means our member list was wrong, so
+		// who actually got the message isn't known.
 		onAccepted()
 	}
-	expectedPHash := ag.OptionalString("phash")
 	if len(expectedPHash) > 0 && phash != expectedPHash {
 		cli.Log.Warnf("Server returned different participant list hash (%s != %s) when sending to %s. Some devices may not have received the message.", phash, expectedPHash, to)
 		switch to.Server {
@@ -500,8 +502,16 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		case types.BroadcastServer:
 			// TODO do something
 		case types.DefaultUserServer, types.HiddenUserServer, types.BotServer, types.HostedServer, types.HostedLIDServer:
+			// The hash covers our own devices too, and both lists are saved
+			// across restarts now, so drop ours as well.
+			drop := []types.JID{to.ToNonAD()}
+			for _, own := range []types.JID{cli.getOwnID().ToNonAD(), cli.getOwnLID().ToNonAD()} {
+				if !own.IsEmpty() {
+					drop = append(drop, own)
+				}
+			}
 			cli.userDevicesCacheLock.Lock()
-			cli.userDevicesCache.Delete(to)
+			cli.userDevicesCache.Delete(drop...)
 			cli.userDevicesCacheLock.Unlock()
 		}
 	}

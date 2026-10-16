@@ -89,6 +89,8 @@ func (cli *Client) bufferOfflineReceipt(ctx context.Context, id types.MessageID,
 }
 
 // flushOfflineReceipts sends every buffered delivery receipt, aggregated.
+// Receipts that can't be sent (no connection) go back into the buffer and
+// are sent once connected again.
 func (cli *Client) flushOfflineReceipts(ctx context.Context) {
 	buf := &cli.offlineReceipts
 	buf.lock.Lock()
@@ -96,25 +98,56 @@ func (cli *Client) flushOfflineReceipts(ctx context.Context) {
 		buf.timer.Stop()
 		buf.timer = nil
 	}
+	if len(buf.order) == 0 || !cli.IsConnected() {
+		buf.lock.Unlock()
+		return
+	}
 	order, groups := buf.order, buf.groups
 	buf.order, buf.groups = nil, nil
 	buf.lock.Unlock()
-	if len(order) == 0 {
-		return
-	}
 	now := strconv.FormatInt(time.Now().Unix(), 10)
 	total := 0
+	var unsent []*offlineReceiptGroup
 	for _, key := range order {
 		group := groups[key]
-		total += len(group.ids)
 		for start := 0; start < len(group.ids); start += maxReceiptIDsPerStanza {
 			chunk := group.ids[start:min(start+maxReceiptIDsPerStanza, len(group.ids))]
 			if err := cli.sendNode(ctx, buildAggregateReceipt(group.attrs, chunk, now)); err != nil {
-				cli.Log.Warnf("Failed to send aggregate delivery receipt for %d messages to %v: %v", len(chunk), group.attrs["to"], err)
+				cli.Log.Warnf("Failed to send aggregate delivery receipt for %d messages to %v, keeping it for later: %v", len(chunk), group.attrs["to"], err)
+				unsent = append(unsent, &offlineReceiptGroup{attrs: group.attrs, ids: group.ids[start:]})
+				break
 			}
+			total += len(chunk)
 		}
 	}
+	if len(unsent) > 0 {
+		buf.lock.Lock()
+		if buf.groups == nil {
+			buf.groups = make(map[string]*offlineReceiptGroup)
+		}
+		for _, group := range unsent {
+			key := offlineReceiptKey(group.attrs)
+			if existing, ok := buf.groups[key]; ok {
+				existing.ids = append(group.ids, existing.ids...)
+			} else {
+				buf.groups[key] = group
+				buf.order = append(buf.order, key)
+			}
+		}
+		buf.lock.Unlock()
+	}
 	cli.Log.Debugf("Sent %d offline delivery receipts in %d groups", total, len(order))
+}
+
+// reset drops every buffered receipt, for when the session itself goes.
+func (buf *offlineReceiptBuffer) reset() {
+	buf.lock.Lock()
+	defer buf.lock.Unlock()
+	if buf.timer != nil {
+		buf.timer.Stop()
+		buf.timer = nil
+	}
+	buf.order, buf.groups = nil, nil
 }
 
 // buildAggregateReceipt builds one receipt for several messages: the first

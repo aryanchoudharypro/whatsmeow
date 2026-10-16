@@ -178,6 +178,7 @@ type Client struct {
 	tcTokenSenderTSLoaded      map[types.JID]struct{}
 	tcTokenSenderTSLock        sync.Mutex
 	tcTokenIssuing             map[types.JID]struct{}
+	tcTokenReissue             map[types.JID]time.Time
 	lastTCTokenSenderTSCleanup time.Time
 	tcTokenDBPruneLock         sync.Mutex
 	lastTCTokenDBPrune         time.Time
@@ -808,6 +809,9 @@ func (cli *Client) Disconnect() {
 	if cli == nil {
 		return
 	}
+	// Buffered offline delivery receipts are what acknowledge those messages;
+	// send them before the socket goes.
+	cli.flushOfflineReceipts(context.Background())
 	cli.socketLock.Lock()
 	cli.expectDisconnect()
 	cli.unlockedDisconnect()
@@ -881,6 +885,7 @@ func (cli *Client) Logout(ctx context.Context) error {
 		return fmt.Errorf("error sending logout request: %w", err)
 	}
 	cli.Disconnect()
+	cli.offlineReceipts.reset()
 	err = cli.Store.Delete(ctx)
 	if err != nil {
 		return fmt.Errorf("error deleting data from store: %w", err)

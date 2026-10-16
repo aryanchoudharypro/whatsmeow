@@ -191,6 +191,7 @@ type Client struct {
 	offlineSyncDone      atomic.Bool
 	offlineBatch         offlineBatchState
 	offlineReceipts      offlineReceiptBuffer
+	skdm                 skdmTracker
 	resendLimiter        resendLimiter
 	presenceSubs         map[types.JID]time.Time
 	presenceSubsLock     sync.Mutex

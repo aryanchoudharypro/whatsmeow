@@ -320,6 +320,10 @@ func (int *DangerousInternalClient) GetGroupInfo(ctx context.Context, jid types.
 	return int.c.getGroupInfo(ctx, jid, lockParticipantCache)
 }
 
+func (int *DangerousInternalClient) DropGroupAndMemberDevices(group types.JID) {
+	int.c.dropGroupAndMemberDevices(group)
+}
+
 func (int *DangerousInternalClient) GetCachedGroupData(ctx context.Context, jid types.JID) (*groupMetaCache, error) {
 	return int.c.getCachedGroupData(ctx, jid)
 }
@@ -456,6 +460,10 @@ func (int *DangerousInternalClient) HandleHistorySyncNotificationLoop() {
 	int.c.handleHistorySyncNotificationLoop()
 }
 
+func (int *DangerousInternalClient) DownloadHistorySync(ctx context.Context, notif *waE2E.HistorySyncNotification, synchronousStorage, stream bool) (*waHistorySync.HistorySync, *events.HistorySyncConversations, error) {
+	return int.c.downloadHistorySync(ctx, notif, synchronousStorage, stream)
+}
+
 func (int *DangerousInternalClient) HandleAppStateSyncKeyShare(ctx context.Context, keys *waE2E.AppStateSyncKeyShare) {
 	int.c.handleAppStateSyncKeyShare(ctx, keys)
 }
@@ -482,6 +490,10 @@ func (int *DangerousInternalClient) StoreMessageSecret(ctx context.Context, info
 
 func (int *DangerousInternalClient) StoreHistoricalMessageSecrets(ctx context.Context, conversations []*waHistorySync.Conversation) {
 	int.c.storeHistoricalMessageSecrets(ctx, conversations)
+}
+
+func (int *DangerousInternalClient) PutHistoricalSecretsAndTokens(ctx context.Context, secrets []store.MessageSecretInsert, privacyTokens []store.PrivacyToken) {
+	int.c.putHistoricalSecretsAndTokens(ctx, secrets, privacyTokens)
 }
 
 func (int *DangerousInternalClient) StoreLIDSyncMessage(ctx context.Context, msg []byte) {
@@ -812,7 +824,7 @@ func (int *DangerousInternalClient) SendNewsletter(ctx context.Context, to types
 	return int.c.sendNewsletter(ctx, to, id, message, mediaID, timings)
 }
 
-func (int *DangerousInternalClient) SendGroup(ctx context.Context, ownID, to types.JID, participants []types.JID, id types.MessageID, message *waE2E.Message, timings *MessageDebugTimings, extraParams nodeExtraParams) (string, []byte, error) {
+func (int *DangerousInternalClient) SendGroup(ctx context.Context, ownID, to types.JID, participants []types.JID, id types.MessageID, message *waE2E.Message, timings *MessageDebugTimings, extraParams nodeExtraParams) (string, []byte, func(), error) {
 	return int.c.sendGroup(ctx, ownID, to, participants, id, message, timings, extraParams)
 }
 
@@ -842,6 +854,10 @@ func (int *DangerousInternalClient) MakeDeviceIdentityNode() waBinary.Node {
 
 func (int *DangerousInternalClient) EncryptMessageForDevices(ctx context.Context, allDevices []types.JID, id string, msgPlaintext, dsmPlaintext []byte, encAttrs waBinary.Attrs) ([]waBinary.Node, bool, error) {
 	return int.c.encryptMessageForDevices(ctx, allDevices, id, msgPlaintext, dsmPlaintext, encAttrs)
+}
+
+func (int *DangerousInternalClient) EncryptMessageForSomeDevices(ctx context.Context, allDevices []types.JID, id string, msgPlaintext, dsmPlaintext []byte, encAttrs waBinary.Attrs, filter func(types.JID, bool) bool) ([]waBinary.Node, bool, []types.JID, error) {
+	return int.c.encryptMessageForSomeDevices(ctx, allDevices, id, msgPlaintext, dsmPlaintext, encAttrs, filter)
 }
 
 func (int *DangerousInternalClient) EncryptMessageForDeviceAndWrap(ctx context.Context, plaintext []byte, wireIdentity, encryptionIdentity types.JID, bundle *prekey.Bundle, encAttrs waBinary.Attrs, existingSessions map[string]bool) (*waBinary.Node, bool, error) {

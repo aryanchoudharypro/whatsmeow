@@ -254,6 +254,9 @@ func (cli *Client) handleRetryReceipt(ctx context.Context, receipt *events.Recei
 	var fbSKDM *waMsgTransport.MessageTransport_Protocol_Ancillary_SenderKeyDistributionMessage
 	var fbDSM *waMsgTransport.MessageTransport_Protocol_Integral_DeviceSentMessage
 	if receipt.IsGroup {
+		// A device asking again may have lost our sender key; the resend
+		// below carries it, and later messages do too until it's accepted.
+		cli.forgetSKDMDevice(ctx, receipt.Chat, receipt.Sender)
 		builder := groups.NewGroupSessionBuilder(cli.Store, pbSerializer)
 		senderKeyName := protocol.NewSenderKeyName(receipt.Chat.String(), cli.getOwnLID().SignalAddress())
 		signalSKDMessage, err := builder.Create(ctx, senderKeyName)

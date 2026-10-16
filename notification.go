@@ -48,6 +48,7 @@ func (cli *Client) handleEncryptNotification(ctx context.Context, node *waBinary
 		if err != nil {
 			cli.Log.Warnf("Failed to delete all sessions of %s from store after identity change: %v", from, err)
 		}
+		cli.forgetSKDMUser(ctx, from)
 		ts := node.AttrGetter().UnixTime("t")
 		storageLID := cli.resolveTCTokenStorageLID(ctx, from)
 		pt, err := cli.Store.PrivacyTokens.GetPrivacyToken(ctx, storageLID)
@@ -142,6 +143,12 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 		deviceChild, _ := child.GetOptionalChildByTag("device")
 		changedDeviceJID := deviceChild.AttrGetter().JID("jid")
 		changedDeviceLID := deviceChild.AttrGetter().OptionalJID("lid")
+		// A device that comes, goes or changes may be a fresh install that
+		// doesn't have our sender keys, whatever we recorded for that ID.
+		cli.forgetSKDMDevice(ctx, types.EmptyJID, changedDeviceJID)
+		if changedDeviceLID != nil {
+			cli.forgetSKDMDevice(ctx, types.EmptyJID, *changedDeviceLID)
+		}
 		switch child.Tag {
 		case "add":
 			cached.devices = append(cached.devices, changedDeviceJID)
@@ -160,6 +167,7 @@ func (cli *Client) handleDeviceNotification(ctx context.Context, node *waBinary.
 		case "update":
 			// Exact meaning of "update" is unknown, clear device list cache to be safe
 			cli.Log.Debugf("%s's device list updated, dropping cached devices", from)
+			cli.forgetSKDMUser(ctx, from)
 			cli.userDevicesCache.Delete(from)
 			continue
 		default:
@@ -231,6 +239,7 @@ func (cli *Client) handleOwnDevicesNotification(ctx context.Context, node *waBin
 		}
 	}
 	newHash := participantListHashV2(newDeviceList)
+	cli.forgetSKDMUser(ctx, ownID)
 	if newHash != expectedNewHash {
 		cli.Log.Debugf("Received own device list change notification %s -> %s from %s, but expected hash was %s", oldHash, newHash, fromJID, expectedNewHash)
 		cli.userDevicesCache.Delete(ownID, ownLID)

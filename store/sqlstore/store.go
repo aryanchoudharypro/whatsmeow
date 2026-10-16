@@ -1273,6 +1273,61 @@ func (s *SQLStore) ClearForkCacheEntries(ctx context.Context, kind string) error
 	return err
 }
 
+const (
+	getSenderKeyDevicesQuery       = `SELECT device FROM whatsmeow_fork_sender_key_devices WHERE our_jid=$1 AND group_jid=$2 AND fingerprint=$3`
+	dropStaleSenderKeyDevicesQuery = `DELETE FROM whatsmeow_fork_sender_key_devices WHERE our_jid=$1 AND group_jid=$2 AND fingerprint<>$3`
+	putSenderKeyDeviceQuery        = `
+		INSERT INTO whatsmeow_fork_sender_key_devices (our_jid, group_jid, device, user_key, fingerprint) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (our_jid, group_jid, device) DO UPDATE SET fingerprint=excluded.fingerprint
+	`
+	forgetSenderKeyDeviceQuery        = `DELETE FROM whatsmeow_fork_sender_key_devices WHERE our_jid=$1 AND device=$2`
+	forgetSenderKeyDeviceInGroupQuery = `DELETE FROM whatsmeow_fork_sender_key_devices WHERE our_jid=$1 AND group_jid=$2 AND device=$3`
+	forgetSenderKeyUserQuery          = `DELETE FROM whatsmeow_fork_sender_key_devices WHERE our_jid=$1 AND user_key=$2`
+)
+
+// GetSenderKeyDevices returns the devices of a group recorded as holding the
+// sender key with the given fingerprint.
+func (s *SQLStore) GetSenderKeyDevices(ctx context.Context, group, fingerprint string) ([]string, error) {
+	rows, err := s.db.Query(ctx, getSenderKeyDevicesQuery, s.JID, group, fingerprint)
+	return dbutil.NewRowIterWithError(rows, dbutil.ScanSingleColumn[string], err).AsList()
+}
+
+// PutSenderKeyDevices records devices as holding the group's sender key with
+// the given fingerprint, and drops records for any older key of the group.
+// userKeys maps each device to its user (see ForgetSenderKeyUser).
+func (s *SQLStore) PutSenderKeyDevices(ctx context.Context, group, fingerprint string, userKeys map[string]string) error {
+	return s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		if _, err := s.db.Exec(ctx, dropStaleSenderKeyDevicesQuery, s.JID, group, fingerprint); err != nil {
+			return err
+		}
+		for device, user := range userKeys {
+			if _, err := s.db.Exec(ctx, putSenderKeyDeviceQuery, s.JID, group, device, user, fingerprint); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// ForgetSenderKeyDevice drops the records of a device, in one group or (with
+// an empty group) in all of them.
+func (s *SQLStore) ForgetSenderKeyDevice(ctx context.Context, group, device string) error {
+	var err error
+	if group == "" {
+		_, err = s.db.Exec(ctx, forgetSenderKeyDeviceQuery, s.JID, device)
+	} else {
+		_, err = s.db.Exec(ctx, forgetSenderKeyDeviceInGroupQuery, s.JID, group, device)
+	}
+	return err
+}
+
+// ForgetSenderKeyUser drops the records of every device of a user, in every
+// group.
+func (s *SQLStore) ForgetSenderKeyUser(ctx context.Context, user string) error {
+	_, err := s.db.Exec(ctx, forgetSenderKeyUserQuery, s.JID, user)
+	return err
+}
+
 // GetTCTokenIssued returns when our privacy token was last issued to the
 // given user, or the zero time if it never was.
 func (s *SQLStore) GetTCTokenIssued(ctx context.Context, user types.JID) (time.Time, error) {

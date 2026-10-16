@@ -125,7 +125,7 @@ func (c *Container) Upgrade(ctx context.Context) error {
 // this fork's upgrade numbers would collide with the ones upstream adds
 // later, and a database that already ran a fork upgrade under a number would
 // then skip upstream's.
-var forkTableQueries = []string{createConnStateTableQuery, createTCTokenIssuedTableQuery, createForkCacheTableQuery}
+var forkTableQueries = []string{createConnStateTableQuery, createTCTokenIssuedTableQuery, createForkCacheTableQuery, createSenderKeyDevicesTableQuery}
 
 const createConnStateTableQuery = `
 CREATE TABLE IF NOT EXISTS whatsmeow_fork_conn_state (
@@ -161,6 +161,21 @@ CREATE TABLE IF NOT EXISTS whatsmeow_fork_cache (
 	updated_at BIGINT NOT NULL,
 
 	PRIMARY KEY (our_jid, kind, key),
+	FOREIGN KEY (our_jid) REFERENCES whatsmeow_device(jid) ON DELETE CASCADE ON UPDATE CASCADE
+)`
+
+// createSenderKeyDevicesTableQuery remembers which devices of a group have
+// been sent our current sender key (identified by fingerprint), so group
+// messages only carry it to devices that don't have it yet.
+const createSenderKeyDevicesTableQuery = `
+CREATE TABLE IF NOT EXISTS whatsmeow_fork_sender_key_devices (
+	our_jid     TEXT,
+	group_jid   TEXT,
+	device      TEXT,
+	user_key    TEXT   NOT NULL,
+	fingerprint TEXT   NOT NULL,
+
+	PRIMARY KEY (our_jid, group_jid, device),
 	FOREIGN KEY (our_jid) REFERENCES whatsmeow_device(jid) ON DELETE CASCADE ON UPDATE CASCADE
 )`
 

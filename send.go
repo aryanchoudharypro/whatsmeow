@@ -436,9 +436,10 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	respChan := cli.waitResponse(req.ID)
 	var phash string
 	var data []byte
+	var onAccepted func()
 	switch to.Server {
 	case types.GroupServer, types.BroadcastServer:
-		phash, data, err = cli.sendGroup(ctx, ownID, to, groupParticipants, req.ID, message, &resp.DebugTimings, extraParams)
+		phash, data, onAccepted, err = cli.sendGroup(ctx, ownID, to, groupParticipants, req.ID, message, &resp.DebugTimings, extraParams)
 	case types.DefaultUserServer, types.BotServer, types.HiddenUserServer:
 		if req.Peer {
 			data, err = cli.sendPeerMessage(ctx, to, req.ID, message, &resp.DebugTimings)
@@ -487,6 +488,8 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	resp.Timestamp = ag.UnixTime("t")
 	if errorCode := ag.Int("error"); errorCode != 0 {
 		err = fmt.Errorf("%w %d", ErrServerReturnedError, errorCode)
+	} else if onAccepted != nil {
+		onAccepted()
 	}
 	expectedPHash := ag.OptionalString("phash")
 	if len(expectedPHash) > 0 && phash != expectedPHash {
@@ -797,6 +800,11 @@ type nodeExtraParams struct {
 	additionalNodes *[]waBinary.Node
 	addressingMode  types.AddressingMode
 	peerRecipientPN types.JID
+	// deviceFilter, if set, limits which devices get the pairwise-encrypted
+	// payload (in a group, the sender key distribution message).
+	deviceFilter func(device types.JID, hasSession bool) bool
+	// encryptedFor, if set, receives the devices it was encrypted for.
+	encryptedFor *[]types.JID
 }
 
 func (cli *Client) sendGroup(
@@ -808,12 +816,12 @@ func (cli *Client) sendGroup(
 	message *waE2E.Message,
 	timings *MessageDebugTimings,
 	extraParams nodeExtraParams,
-) (string, []byte, error) {
+) (string, []byte, func(), error) {
 	start := time.Now()
 	plaintext, _, err := marshalMessage(to, message)
 	timings.Marshal = time.Since(start)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	start = time.Now()
@@ -821,7 +829,7 @@ func (cli *Client) sendGroup(
 	senderKeyName := protocol.NewSenderKeyName(to.String(), cli.getOwnLID().SignalAddress())
 	signalSKDMessage, err := builder.Create(ctx, senderKeyName)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create sender key distribution message to send %s to %s: %w", id, to, err)
+		return "", nil, nil, fmt.Errorf("failed to create sender key distribution message to send %s to %s: %w", id, to, err)
 	}
 	skdMessage := &waE2E.Message{
 		SenderKeyDistributionMessage: &waE2E.SenderKeyDistributionMessage{
@@ -831,22 +839,26 @@ func (cli *Client) sendGroup(
 	}
 	skdPlaintext, err := proto.Marshal(skdMessage)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to marshal sender key distribution message to send %s to %s: %w", id, to, err)
+		return "", nil, nil, fmt.Errorf("failed to marshal sender key distribution message to send %s to %s: %w", id, to, err)
 	}
 
 	cipher := groups.NewGroupCipher(builder, senderKeyName, cli.Store)
 	encrypted, err := cipher.Encrypt(ctx, padMessage(plaintext))
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to encrypt group message to send %s to %s: %w", id, to, err)
+		return "", nil, nil, fmt.Errorf("failed to encrypt group message to send %s to %s: %w", id, to, err)
 	}
 	ciphertext := encrypted.SignedSerialize()
 	timings.GroupEncrypt = time.Since(start)
 
+	fingerprint := senderKeyFingerprint(signalSKDMessage)
+	var skdmRecipients []types.JID
+	extraParams.deviceFilter = cli.skdmNeededFilter(ctx, to, fingerprint)
+	extraParams.encryptedFor = &skdmRecipients
 	node, allDevices, err := cli.prepareMessageNode(
 		ctx, to, id, message, participants, skdPlaintext, nil, timings, extraParams,
 	)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 
 	phash := participantListHashV2(allDevices)
@@ -868,9 +880,14 @@ func (cli *Client) sendGroup(
 	data, err := cli.sendNodeAndGetData(ctx, *node)
 	timings.Send = time.Since(start)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to send message node: %w", err)
+		return "", nil, nil, fmt.Errorf("failed to send message node: %w", err)
 	}
-	return phash, data, nil
+	// Only once the server accepts the message do its recipients count as
+	// having our sender key.
+	onAccepted := func() {
+		cli.markSKDMDelivered(context.WithoutCancel(ctx), to, fingerprint, skdmRecipients)
+	}
+	return phash, data, onAccepted, nil
 }
 
 func (cli *Client) sendPeerMessage(
@@ -1265,23 +1282,30 @@ func (cli *Client) prepareMessageNode(
 	}
 
 	start = time.Now()
-	participantNodes, includeIdentity, err := cli.encryptMessageForDevices(
-		ctx, allDevices, id, plaintext, dsmPlaintext, encAttrs,
+	participantNodes, includeIdentity, encryptedFor, err := cli.encryptMessageForSomeDevices(
+		ctx, allDevices, id, plaintext, dsmPlaintext, encAttrs, extraParams.deviceFilter,
 	)
 	timings.PeerEncrypt = time.Since(start)
 	if err != nil {
 		return nil, nil, err
 	}
+	if extraParams.encryptedFor != nil {
+		*extraParams.encryptedFor = encryptedFor
+	}
 	participantNode := waBinary.Node{
 		Tag:     "participants",
 		Content: participantNodes,
 	}
+	content := cli.getMessageContent(participantNode, message, attrs, includeIdentity, extraParams)
+	if extraParams.deviceFilter != nil && len(participantNodes) == 0 {
+		// Every device already has our sender key: like WA Web, send no
+		// <participants> at all rather than an empty one.
+		content = content[1:]
+	}
 	return &waBinary.Node{
-		Tag:   "message",
-		Attrs: attrs,
-		Content: cli.getMessageContent(
-			participantNode, message, attrs, includeIdentity, extraParams,
-		),
+		Tag:     "message",
+		Attrs:   attrs,
+		Content: content,
 	}, allDevices, nil
 }
 
@@ -1330,6 +1354,22 @@ func (cli *Client) encryptMessageForDevices(
 	msgPlaintext, dsmPlaintext []byte,
 	encAttrs waBinary.Attrs,
 ) ([]waBinary.Node, bool, error) {
+	nodes, includeIdentity, _, err := cli.encryptMessageForSomeDevices(ctx, allDevices, id, msgPlaintext, dsmPlaintext, encAttrs, nil)
+	return nodes, includeIdentity, err
+}
+
+// encryptMessageForSomeDevices is encryptMessageForDevices for the devices
+// that filter keeps (all of them if it's nil); filter is told whether a
+// session with the device already exists. It also returns the devices the
+// message was encrypted for.
+func (cli *Client) encryptMessageForSomeDevices(
+	ctx context.Context,
+	allDevices []types.JID,
+	id string,
+	msgPlaintext, dsmPlaintext []byte,
+	encAttrs waBinary.Attrs,
+	filter func(device types.JID, hasSession bool) bool,
+) ([]waBinary.Node, bool, []types.JID, error) {
 	ownJID := cli.getOwnID()
 	ownLID := cli.getOwnLID()
 	includeIdentity := false
@@ -1343,7 +1383,7 @@ func (cli *Client) encryptMessageForDevices(
 	}
 	lidMappings, err := cli.Store.LIDs.GetManyLIDsForPNs(ctx, pnDevices)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to fetch LID mappings: %w", err)
+		return nil, false, nil, fmt.Errorf("failed to fetch LID mappings: %w", err)
 	}
 
 	encryptionIdentities := make(map[types.JID]types.JID, len(allDevices))
@@ -1369,8 +1409,9 @@ func (cli *Client) encryptMessageForDevices(
 
 	existingSessions, ctx, err := cli.Store.WithCachedSessions(ctx, sessionAddresses)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to prefetch sessions: %w", err)
+		return nil, false, nil, fmt.Errorf("failed to prefetch sessions: %w", err)
 	}
+	var encryptedFor []types.JID
 	var retryDevices []types.JID
 	for addr, exists := range existingSessions {
 		if !exists {
@@ -1384,6 +1425,9 @@ func (cli *Client) encryptMessageForDevices(
 		if jid == ownJID || jid == ownLID {
 			continue
 		}
+		if filter != nil && !filter(jid, existingSessions[encryptionIdentities[jid].SignalAddress().String()]) {
+			continue
+		}
 		if (jid.User == ownJID.User || jid.User == ownLID.User) && dsmPlaintext != nil {
 			plaintext = dsmPlaintext
 		}
@@ -1394,21 +1438,22 @@ func (cli *Client) encryptMessageForDevices(
 			// TODO return these errors if it's a fatal one (like context cancellation or database)
 			cli.Log.Warnf("Failed to encrypt %s for %s: %v", id, jid, err)
 			if ctx.Err() != nil {
-				return nil, false, err
+				return nil, false, nil, err
 			}
 			continue
 		}
 
 		participantNodes = append(participantNodes, *encrypted)
+		encryptedFor = append(encryptedFor, jid)
 		if isPreKey {
 			includeIdentity = true
 		}
 	}
 	err = cli.Store.PutCachedSessions(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to save cached sessions: %w", err)
+		return nil, false, nil, fmt.Errorf("failed to save cached sessions: %w", err)
 	}
-	return participantNodes, includeIdentity, nil
+	return participantNodes, includeIdentity, encryptedFor, nil
 }
 
 func (cli *Client) encryptMessageForDeviceAndWrap(

@@ -1016,7 +1016,12 @@ func (cli *Client) handleProtocolMessage(ctx context.Context, info *types.Messag
 		receiptDeferred := false
 		if !cli.ManualHistorySyncDownload {
 			req := historySyncRequest{notif: protoMsg.HistorySyncNotification}
-			if cli.AckHistorySyncAfterDispatch {
+			// Statuses are acknowledged on arrival even then: WA Web sends the
+			// receipt for an INITIAL_STATUS_V3 chunk before storing it (and for
+			// every other chunk after), so a status blob that has expired
+			// before it could be fetched doesn't hold up the phone's sync.
+			isStatus := protoMsg.GetHistorySyncNotification().GetSyncType() == waE2E.HistorySyncType_INITIAL_STATUS_V3
+			if cli.AckHistorySyncAfterDispatch && !isStatus {
 				// The download loop sends the receipt once the chunk is handled.
 				req.receiptID = info.ID
 				receiptDeferred = true

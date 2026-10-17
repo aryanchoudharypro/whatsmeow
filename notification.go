@@ -288,10 +288,40 @@ func (cli *Client) handleAccountSyncNotification(ctx context.Context, node *waBi
 			})
 		case "blocklist":
 			cli.handleBlocklist(ctx, &child)
+		case "disappearing_mode":
+			cli.handleOwnDisappearingMode(ctx, &child)
 		default:
 			cli.Log.Debugf("Unhandled account sync item %s", child.Tag)
 		}
 	}
+}
+
+// handleOwnDisappearingMode handles our default disappearing message timer
+// changing on another device. As in WA Web's account_sync parser, the
+// stanza has either the new duration and t, or only an action ("modify"),
+// in which case the setting is queried again.
+func (cli *Client) handleOwnDisappearingMode(ctx context.Context, node *waBinary.Node) {
+	ag := node.AttrGetter()
+	if action, ok := ag.GetString("action", false); ok {
+		if action != "modify" {
+			cli.Log.Debugf("Unhandled own disappearing_mode action %s", action)
+			return
+		}
+		timer, err := cli.GetDefaultDisappearingTimer(ctx)
+		if err != nil {
+			cli.Log.Warnf("Failed to refresh default disappearing timer: %v", err)
+			return
+		}
+		cli.dispatchEvent(&events.DefaultDisappearingTimer{Timer: timer, Timestamp: time.Now()})
+		return
+	}
+	duration := ag.OptionalInt("duration")
+	ts := ag.OptionalUnixTime("t")
+	if !ag.OK() {
+		cli.Log.Warnf("Failed to parse own disappearing_mode: %v", ag.Error())
+		return
+	}
+	cli.dispatchEvent(&events.DefaultDisappearingTimer{Timer: time.Duration(duration) * time.Second, Timestamp: ts})
 }
 
 func (cli *Client) handlePrivacyTokenNotification(ctx context.Context, node *waBinary.Node) {

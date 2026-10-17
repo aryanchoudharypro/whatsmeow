@@ -632,6 +632,14 @@ type DirtyState struct {
 	Timestamp time.Time
 }
 
+// DefaultDisappearingTimer is emitted when our default disappearing message
+// timer for new chats is changed on another device (an account_sync
+// disappearing_mode notification). Zero means off.
+type DefaultDisappearingTimer struct {
+	Timer     time.Duration
+	Timestamp time.Time
+}
+
 // Picture is emitted when a user's profile picture or group's photo is changed.
 //
 // You can use Client.GetProfilePictureInfo to get the actual image URL after this event.

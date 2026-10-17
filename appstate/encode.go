@@ -24,6 +24,11 @@ type MutationInfo struct {
 	Version int32
 	// Value contains the data for the mutation.
 	Value *waSyncAction.SyncActionValue
+	// Operation is SET (the zero value) or REMOVE. A REMOVE takes the record
+	// out of the collection, as WA Web's contact deletion does; its Value is
+	// still encoded and MAC'd. A REMOVE of an index that was never set is
+	// left out of the patch, since there's nothing to take away.
+	Operation waServerSync.SyncdMutation_SyncdOperation
 }
 
 // PatchInfo contains information about a patch to the app state.
@@ -316,6 +321,15 @@ func (proc *Processor) EncodePatch(ctx context.Context, keyID []byte, state Hash
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal mutation index: %w", err)
 		}
+		indexMac := concatAndHMAC(sha256.New, keys.Index, indexBytes)
+		if mutationInfo.Operation == waServerSync.SyncdMutation_REMOVE {
+			prev, err := proc.Store.AppState.GetAppStateMutationMAC(ctx, string(patchInfo.Type), indexMac)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get value MAC of record to remove: %w", err)
+			} else if prev == nil {
+				continue
+			}
+		}
 
 		pbObj := &waSyncAction.SyncActionData{
 			Index:   indexBytes,
@@ -334,17 +348,20 @@ func (proc *Processor) EncodePatch(ctx context.Context, keyID []byte, state Hash
 			return nil, fmt.Errorf("failed to encrypt mutation: %w", err)
 		}
 
-		valueMac := generateContentMAC(waServerSync.SyncdMutation_SET, encryptedContent, keyID, keys.ValueMAC)
-		indexMac := concatAndHMAC(sha256.New, keys.Index, indexBytes)
+		valueMac := generateContentMAC(mutationInfo.Operation, encryptedContent, keyID, keys.ValueMAC)
 
 		mutations = append(mutations, &waServerSync.SyncdMutation{
-			Operation: waServerSync.SyncdMutation_SET.Enum(),
+			Operation: mutationInfo.Operation.Enum(),
 			Record: &waServerSync.SyncdRecord{
 				Index: &waServerSync.SyncdIndex{Blob: indexMac},
 				Value: &waServerSync.SyncdValue{Blob: append(encryptedContent, valueMac...)},
 				KeyID: &waServerSync.KeyId{ID: keyID},
 			},
 		})
+	}
+
+	if len(mutations) == 0 {
+		return nil, ErrNothingToSend
 	}
 
 	warn, err := state.updateHash(mutations, func(indexMAC []byte, _ int) ([]byte, error) {
@@ -524,4 +541,22 @@ func BuildFavorites(chats []types.JID) PatchInfo {
 			},
 		}},
 	}
+}
+
+// BuildRemoveContact builds an app state patch deleting a saved contact
+// (WAWebContactSync.getContactSyncMutation with isDelete): a REMOVE of the
+// same ["contact", jid] index a save writes, carrying an empty action. Pass
+// every form the contact may be saved under (phone number and LID); the ones
+// that aren't saved are left out when the patch is encoded.
+func BuildRemoveContact(jids ...types.JID) PatchInfo {
+	mutations := make([]MutationInfo, 0, len(jids))
+	for _, jid := range jids {
+		mutations = append(mutations, MutationInfo{
+			Index:     []string{IndexContact, jid.String()},
+			Version:   2,
+			Value:     &waSyncAction.SyncActionValue{ContactAction: &waSyncAction.ContactAction{}},
+			Operation: waServerSync.SyncdMutation_REMOVE,
+		})
+	}
+	return PatchInfo{Type: WAPatchCriticalUnblockLow, Mutations: mutations}
 }

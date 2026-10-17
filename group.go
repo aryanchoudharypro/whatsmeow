@@ -187,6 +187,14 @@ func (cli *Client) UnlinkGroup(ctx context.Context, parent, child types.JID) err
 	return err
 }
 
+// DeactivateCommunity deletes a community (WA Web's "Deactivate community").
+// Its groups are unlinked and stay as groups of their own; its announcement
+// group goes with it.
+func (cli *Client) DeactivateCommunity(ctx context.Context, community types.JID) error {
+	_, err := cli.sendGroupIQ(ctx, iqSet, community, waBinary.Node{Tag: "delete_parent"})
+	return err
+}
+
 // LinkGroup adds an existing group as a child group in a community.
 //
 // To create a new group within a community, set LinkedParentJID in the CreateGroup request.

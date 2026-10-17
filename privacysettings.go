@@ -176,3 +176,127 @@ func (cli *Client) handlePrivacySettingsNotification(ctx context.Context, privac
 	cli.privacySettingsCache.Store(settings)
 	cli.dispatchEvent(evt)
 }
+
+// GetPrivacyDisallowedList fetches who is left out of a "My contacts except..."
+// privacy setting (value contact_blacklist). Only last, profile, status and
+// groupadd have such a list.
+//
+// The returned DHash identifies this version of the list; pass it to
+// SetPrivacyDisallowedList so the server can refuse a change made against an
+// outdated list.
+func (cli *Client) GetPrivacyDisallowedList(ctx context.Context, name types.PrivacySettingType) (*types.PrivacyDisallowedList, error) {
+	if cli == nil {
+		return nil, ErrClientIsNil
+	}
+	resp, err := cli.sendIQ(ctx, infoQuery{
+		Namespace: "privacy",
+		Type:      iqGet,
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag: "privacy",
+			Content: []waBinary.Node{{
+				Tag:   "list",
+				Attrs: waBinary.Attrs{"name": string(name), "value": string(types.PrivacySettingContactBlacklist)},
+			}},
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+	privacyNode, ok := resp.GetOptionalChildByTag("privacy")
+	if !ok {
+		return nil, &ElementMissingError{Tag: "privacy", In: "response to privacy list query"}
+	}
+	return parsePrivacyDisallowedList(&privacyNode, name), nil
+}
+
+func parsePrivacyDisallowedList(privacyNode *waBinary.Node, name types.PrivacySettingType) *types.PrivacyDisallowedList {
+	list := &types.PrivacyDisallowedList{Name: name}
+	for _, listNode := range privacyNode.GetChildrenByTag("list") {
+		ag := listNode.AttrGetter()
+		if listName := ag.OptionalString("name"); listName != "" && listName != string(name) {
+			continue
+		}
+		list.DHash = ag.OptionalString("dhash")
+		for _, userNode := range listNode.GetChildrenByTag("user") {
+			uag := userNode.AttrGetter()
+			user := types.PrivacyListUser{JID: uag.JID("jid")}
+			if pn, ok := uag.GetJID("pn_jid", false); ok {
+				user.PN = pn
+			}
+			if uag.OK() {
+				list.Users = append(list.Users, user)
+			}
+		}
+	}
+	return list
+}
+
+// SetPrivacyDisallowedList sets a privacy setting to "My contacts except..."
+// (contact_blacklist), adding and removing the given people from its list,
+// the way WhatsApp Web's WAWebSetPrivacyJob does. Each user should be given
+// by LID, with their phone number JID in PN when known.
+//
+// dhash is the list's hash from GetPrivacyDisallowedList (empty if there is
+// no list yet). With no changes, the setting is switched to the list as the
+// server already has it. The new hash is returned.
+func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.PrivacySettingType, dhash string, changes []types.PrivacyListChange) (string, error) {
+	if cli == nil {
+		return "", ErrClientIsNil
+	}
+	category := waBinary.Node{
+		Tag: "category",
+		Attrs: waBinary.Attrs{
+			"name":  string(name),
+			"value": string(types.PrivacySettingContactBlacklist),
+		},
+	}
+	if dhash != "" {
+		category.Attrs["dhash"] = dhash
+	}
+	users := make([]waBinary.Node, 0, len(changes))
+	for _, change := range changes {
+		attrs := waBinary.Attrs{"action": string(change.Action), "jid": change.JID.ToNonAD()}
+		if !change.PN.IsEmpty() {
+			attrs["pn_jid"] = change.PN.ToNonAD()
+		}
+		users = append(users, waBinary.Node{Tag: "user", Attrs: attrs})
+	}
+	if len(users) > 0 {
+		category.Content = users
+	}
+	resp, err := cli.sendIQ(ctx, infoQuery{
+		Namespace: "privacy",
+		Type:      iqSet,
+		To:        types.ServerJID,
+		Content: []waBinary.Node{{
+			Tag:     "privacy",
+			Attrs:   waBinary.Attrs{"addressing_mode": string(types.AddressingModeLID)},
+			Content: []waBinary.Node{category},
+		}},
+	})
+	if err != nil {
+		return "", err
+	}
+	newHash := ""
+	if privacyNode, ok := resp.GetOptionalChildByTag("privacy"); ok {
+		for _, child := range privacyNode.GetChildrenByTag("category") {
+			newHash = child.AttrGetter().OptionalString("dhash")
+		}
+	}
+	if val := cli.privacySettingsCache.Load(); val != nil {
+		settings := *val.(*types.PrivacySettings)
+		switch name {
+		case types.PrivacySettingTypeGroupAdd:
+			settings.GroupAdd = types.PrivacySettingContactBlacklist
+		case types.PrivacySettingTypeLastSeen:
+			settings.LastSeen = types.PrivacySettingContactBlacklist
+		case types.PrivacySettingTypeStatus:
+			settings.Status = types.PrivacySettingContactBlacklist
+		case types.PrivacySettingTypeProfile:
+			settings.Profile = types.PrivacySettingContactBlacklist
+		}
+		cli.privacySettingsCache.Store(&settings)
+	}
+	return newHash, nil
+}

@@ -168,6 +168,36 @@ type PrivacySettings struct {
 	Stickers     PrivacySetting // Valid values: PrivacySettingContacts, PrivacySettingContactAllowlist, PrivacySettingNone
 }
 
+// PrivacyDisallowedList is who a "My contacts except..." privacy setting
+// (PrivacySettingContactBlacklist) leaves out.
+type PrivacyDisallowedList struct {
+	Name  PrivacySettingType
+	DHash string
+	Users []PrivacyListUser
+}
+
+// PrivacyListUser is one person in a PrivacyDisallowedList: usually their LID,
+// with their phone number JID in PN when the server gives it.
+type PrivacyListUser struct {
+	JID JID
+	PN  JID
+}
+
+// PrivacyListAction is whether a PrivacyListChange adds or removes someone.
+type PrivacyListAction string
+
+const (
+	PrivacyListActionAdd    PrivacyListAction = "add"
+	PrivacyListActionRemove PrivacyListAction = "remove"
+)
+
+// PrivacyListChange adds someone to or removes them from a disallowed list.
+type PrivacyListChange struct {
+	Action PrivacyListAction
+	JID    JID // LID
+	PN     JID // phone number JID, if known
+}
+
 // StatusPrivacyType is the type of list in StatusPrivacy.
 type StatusPrivacyType string
 

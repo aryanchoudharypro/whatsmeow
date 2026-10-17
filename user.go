@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -182,8 +183,8 @@ func (cli *Client) GetTextStatus(ctx context.Context, jid types.JID) (*types.Tex
 			JID                  string                `json:"jid"`
 			Text                 string                `json:"text"`
 			Emoji                *types.SetStatusEmoji `json:"emoji"`
-			LastUpdateTime       string                `json:"last_update_time"`
-			EphemeralDurationSec int                   `json:"ephemeral_duration_sec"`
+			LastUpdateTime       json.RawMessage       `json:"last_update_time"`
+			EphemeralDurationSec json.RawMessage       `json:"ephemeral_duration_sec"`
 		} `json:"xwa2_text_status_list"`
 	}
 	if err = json.Unmarshal(resp, &parsed); err != nil {
@@ -197,13 +198,30 @@ func (cli *Client) GetTextStatus(ctx context.Context, jid types.JID) (*types.Tex
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse jid in text status response: %w", err)
 	}
+	// The server sends last_update_time as a string, while WhatsApp Web's
+	// schema types it as a number (and ephemeral_duration_sec the other way
+	// round), so either form is accepted for both.
+	duration, _ := strconv.Atoi(unquoteJSONScalar(entry.EphemeralDurationSec))
 	return &types.TextStatus{
 		JID:                  entryJID,
 		Text:                 entry.Text,
 		Emoji:                entry.Emoji,
-		LastUpdateTime:       entry.LastUpdateTime,
-		EphemeralDurationSec: entry.EphemeralDurationSec,
+		LastUpdateTime:       unquoteJSONScalar(entry.LastUpdateTime),
+		EphemeralDurationSec: duration,
 	}, nil
+}
+
+// unquoteJSONScalar returns a JSON number or string as plain text, or "" for
+// null or nothing.
+func unquoteJSONScalar(raw json.RawMessage) string {
+	var str string
+	if json.Unmarshal(raw, &str) == nil {
+		return str
+	}
+	if text := string(raw); text != "null" {
+		return text
+	}
+	return ""
 }
 
 // SetStatusMessage updates the current user's status text, which is shown in the "About" section in the user profile.

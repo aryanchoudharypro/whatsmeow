@@ -489,3 +489,39 @@ func BuildUserStatusMute(target types.JID, muted bool) PatchInfo {
 		}},
 	}
 }
+
+// BuildLabelEditAction builds an app state patch setting a label's whole
+// LabelEditAction, for the fields BuildLabelEdit doesn't cover: chat lists
+// are labels with Type CUSTOM, an OrderIndex and IsActive, and WA Web leaves
+// Color unset on personal accounts. Deleting one sends its last action with
+// Deleted set.
+func BuildLabelEditAction(labelID string, action *waSyncAction.LabelEditAction) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegular,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexLabelEdit, labelID},
+			Version: 3,
+			Value:   &waSyncAction.SyncActionValue{LabelEditAction: action},
+		}},
+	}
+}
+
+// BuildFavorites builds an app state patch setting the favorite chats
+// (WAWebFavoritesSync). There's one mutation for the whole account, so this
+// is the complete list in order, and an empty one clears it.
+func BuildFavorites(chats []types.JID) PatchInfo {
+	favorites := make([]*waSyncAction.FavoritesAction_Favorite, 0, len(chats))
+	for _, chat := range chats {
+		favorites = append(favorites, &waSyncAction.FavoritesAction_Favorite{ID: proto.String(chat.String())})
+	}
+	return PatchInfo{
+		Type: WAPatchRegularHigh,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexFavorites},
+			Version: 1,
+			Value: &waSyncAction.SyncActionValue{
+				FavoritesAction: &waSyncAction.FavoritesAction{Favorites: favorites},
+			},
+		}},
+	}
+}

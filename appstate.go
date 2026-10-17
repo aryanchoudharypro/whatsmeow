@@ -490,6 +490,12 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			Action:       mutation.Action.GetUserStatusMuteAction(),
 			FromFullSync: fullSync,
 		}
+	case appstate.IndexStatusPrivacy:
+		eventToDispatch = &events.StatusPrivacy{
+			Timestamp:    ts,
+			Action:       mutation.Action.GetStatusPrivacy(),
+			FromFullSync: fullSync,
+		}
 	case appstate.IndexFavoriteSticker:
 		// Indexed [favoriteSticker, filehash]. Unfavoriting is a SET with
 		// isFavorite false, so an action without that field says nothing.

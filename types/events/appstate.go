@@ -200,6 +200,16 @@ type UnarchiveChatsSetting struct {
 	FromFullSync bool                                // Whether the action is emitted because of a fullSync
 }
 
+// StatusPrivacy is emitted when who can see our status updates is changed,
+// from another device or by a full sync: everyone in our contacts, all but
+// some (DENY_LIST) or only some (ALLOW_LIST).
+type StatusPrivacy struct {
+	Timestamp time.Time // The time when the modification happened.
+
+	Action       *waSyncAction.StatusPrivacyAction
+	FromFullSync bool // Whether the action is emitted because of a fullSync
+}
+
 // FavoriteSticker is emitted when a sticker is added to or removed from the
 // favorites from another device. The index names it by FileHash, the
 // base64 SHA-256 of the sticker file; Action says which way it went

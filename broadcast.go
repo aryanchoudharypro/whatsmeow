@@ -15,10 +15,12 @@ import (
 	"go.mau.fi/whatsmeow/types"
 )
 
-func (cli *Client) getBroadcastListParticipants(ctx context.Context, jid types.JID) ([]types.JID, error) {
+func (cli *Client) getBroadcastListParticipants(ctx context.Context, jid types.JID, statusRecipients []types.JID) ([]types.JID, error) {
 	var list []types.JID
 	var err error
-	if jid == types.StatusBroadcastJID {
+	if jid == types.StatusBroadcastJID && statusRecipients != nil {
+		list = append(list, statusRecipients...)
+	} else if jid == types.StatusBroadcastJID {
 		list, err = cli.getStatusBroadcastRecipients(ctx)
 	} else {
 		return nil, ErrBroadcastListUnsupported

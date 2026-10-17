@@ -460,3 +460,32 @@ func BuildFavoriteSticker(fileHash string, sticker *waSyncAction.StickerAction, 
 		}},
 	}
 }
+
+// BuildStatusPrivacy builds an app state patch setting who sees our status
+// updates (WAWebStatusPrivacySettingSync). The audience isn't applied when
+// sending by itself: pass it as SendRequestExtra.StatusRecipients.
+func BuildStatusPrivacy(action *waSyncAction.StatusPrivacyAction) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegularHigh,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexStatusPrivacy},
+			Version: 7,
+			Value:   &waSyncAction.SyncActionValue{StatusPrivacy: action},
+		}},
+	}
+}
+
+// BuildUserStatusMute builds an app state patch muting or unmuting someone's
+// status updates (WAWebUserStatusMuteSync).
+func BuildUserStatusMute(target types.JID, muted bool) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegularHigh,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexUserStatusMute, target.String()},
+			Version: 7,
+			Value: &waSyncAction.SyncActionValue{
+				UserStatusMuteAction: &waSyncAction.UserStatusMuteAction{Muted: proto.Bool(muted)},
+			},
+		}},
+	}
+}

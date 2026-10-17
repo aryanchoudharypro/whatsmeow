@@ -92,8 +92,8 @@ func (int *DangerousInternalClient) HandleDecryptedArmadillo(ctx context.Context
 	return int.c.handleDecryptedArmadillo(ctx, info, decrypted, retryCount)
 }
 
-func (int *DangerousInternalClient) GetBroadcastListParticipants(ctx context.Context, jid types.JID) ([]types.JID, error) {
-	return int.c.getBroadcastListParticipants(ctx, jid)
+func (int *DangerousInternalClient) GetBroadcastListParticipants(ctx context.Context, jid types.JID, statusRecipients []types.JID) ([]types.JID, error) {
+	return int.c.getBroadcastListParticipants(ctx, jid, statusRecipients)
 }
 
 func (int *DangerousInternalClient) GetStatusBroadcastRecipients(ctx context.Context) ([]types.JID, error) {

@@ -300,3 +300,29 @@ func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.Priv
 	}
 	return newHash, nil
 }
+
+// GetDefaultDisappearingTimer gets the default disappearing message timer
+// new chats start with (zero when it's off), as a usync query for our own
+// disappearing_mode.
+func (cli *Client) GetDefaultDisappearingTimer(ctx context.Context) (time.Duration, error) {
+	ownID := cli.getOwnID().ToNonAD()
+	if ownID.IsEmpty() {
+		return 0, ErrNotLoggedIn
+	}
+	list, err := cli.usync(ctx, []types.JID{ownID}, "query", "interactive", []waBinary.Node{{Tag: "disappearing_mode"}})
+	if err != nil {
+		return 0, err
+	}
+	for _, child := range list.GetChildren() {
+		if child.Tag != "user" {
+			continue
+		}
+		mode, ok := child.GetOptionalChildByTag("disappearing_mode")
+		if !ok {
+			continue
+		}
+		ag := mode.AttrGetter()
+		return time.Duration(ag.OptionalInt("duration")) * time.Second, nil
+	}
+	return 0, nil
+}

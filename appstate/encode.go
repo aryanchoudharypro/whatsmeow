@@ -442,3 +442,21 @@ func newMessageRange(lastMessageTimestamp time.Time, lastMessageKey *waCommon.Me
 	}
 	return messageRange
 }
+
+// BuildFavoriteSticker builds an app state patch adding a sticker to the
+// favorites, or taking it off (a SET with IsFavorite false, as WA Web's
+// WAWebStickersFavoriteSyncAction sends it). fileHash is the base64 SHA-256
+// of the sticker file, which is what the index names it by; sticker says
+// where it can be downloaded.
+func BuildFavoriteSticker(fileHash string, sticker *waSyncAction.StickerAction, favorite bool) PatchInfo {
+	action := proto.Clone(sticker).(*waSyncAction.StickerAction)
+	action.IsFavorite = proto.Bool(favorite)
+	return PatchInfo{
+		Type: WAPatchRegularLow,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexFavoriteSticker, fileHash},
+			Version: 7,
+			Value:   &waSyncAction.SyncActionValue{StickerAction: action},
+		}},
+	}
+}

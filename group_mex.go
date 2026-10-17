@@ -54,3 +54,36 @@ func (cli *Client) GetSubGroupParticipantCounts(ctx context.Context, community t
 	}
 	return counts, nil
 }
+
+const mutationUpdateGroupProperty = "9418211574894172"
+
+// SetGroupLimitSharing turns a group's advanced chat privacy on or off, the
+// way WA Web's chat settings do (WAWebMexUpdateGroupPropertyJobMutation with a
+// limit_sharing update and the CHAT_SETTING trigger). Members are told with a
+// GroupLimitSharingUpdate.
+func (cli *Client) SetGroupLimitSharing(ctx context.Context, jid types.JID, enabled bool) error {
+	data, err := cli.sendMexIQ(ctx, mutationUpdateGroupProperty, map[string]any{
+		"group_id": jid.String(),
+		"update": map[string]any{
+			"limit_sharing": map[string]any{
+				"limit_sharing_enabled": enabled,
+				"limit_sharing_trigger": "CHAT_SETTING",
+			},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	var resp struct {
+		Update struct {
+			State string `json:"state"`
+		} `json:"xwa2_group_update_property"`
+	}
+	if err = json.Unmarshal(data, &resp); err != nil {
+		return fmt.Errorf("failed to parse group property update: %w", err)
+	}
+	if resp.Update.State != "ACTIVE" {
+		return fmt.Errorf("group property update failed with state %q", resp.Update.State)
+	}
+	return nil
+}

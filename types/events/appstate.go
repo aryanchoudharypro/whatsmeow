@@ -200,6 +200,18 @@ type UnarchiveChatsSetting struct {
 	FromFullSync bool                                // Whether the action is emitted because of a fullSync
 }
 
+// FavoriteSticker is emitted when a sticker is added to or removed from the
+// favorites from another device. The index names it by FileHash, the
+// base64 SHA-256 of the sticker file; Action says which way it went
+// (IsFavorite) and where the sticker can be downloaded.
+type FavoriteSticker struct {
+	FileHash  string    // base64 SHA-256 of the sticker file
+	Timestamp time.Time // The time when the modification happened.
+
+	Action       *waSyncAction.StickerAction
+	FromFullSync bool // Whether the action is emitted because of a fullSync
+}
+
 // UserStatusMute is emitted when the user mutes or unmutes another user's status updates.
 type UserStatusMute struct {
 	JID       types.JID // The user who was muted or unmuted

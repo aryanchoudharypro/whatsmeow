@@ -490,6 +490,19 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			Action:       mutation.Action.GetUserStatusMuteAction(),
 			FromFullSync: fullSync,
 		}
+	case appstate.IndexFavoriteSticker:
+		// Indexed [favoriteSticker, filehash]. Unfavoriting is a SET with
+		// isFavorite false, so an action without that field says nothing.
+		act := mutation.Action.GetStickerAction()
+		if len(mutation.Index) < 2 || mutation.Index[1] == "" || act == nil || act.IsFavorite == nil {
+			return
+		}
+		eventToDispatch = &events.FavoriteSticker{
+			FileHash:     mutation.Index[1],
+			Timestamp:    ts,
+			Action:       act,
+			FromFullSync: fullSync,
+		}
 	case appstate.IndexLabelEdit:
 		act := mutation.Action.GetLabelEditAction()
 		eventToDispatch = &events.LabelEdit{

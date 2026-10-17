@@ -395,6 +395,15 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		extraParams.metaNode.Attrs["tag_reason"] = reason
 	}
 
+	// View-once media says so in <meta> as well (WA Web's genMetaNode reads
+	// the media's isViewOnce).
+	if isViewOnceMedia(message) {
+		if extraParams.metaNode == nil {
+			extraParams.metaNode = &waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{}}
+		}
+		extraParams.metaNode.Attrs["view_once"] = "true"
+	}
+
 	if req.AdditionalNodes != nil {
 		extraParams.additionalNodes = req.AdditionalNodes
 	}
@@ -1546,4 +1555,27 @@ func (cli *Client) encryptMessageForDevice(
 		Attrs:   encAttrs,
 		Content: ciphertext.Serialize(),
 	}, includeDeviceIdentity, nil
+}
+
+// isViewOnceMedia reports whether a message is a photo, video or audio sent
+// view once: inside a view-once wrapper, or with the media's own flag set.
+func isViewOnceMedia(msg *waE2E.Message) bool {
+	wrapped := false
+	for _, wrapper := range []*waE2E.FutureProofMessage{msg.GetViewOnceMessage(), msg.GetViewOnceMessageV2(), msg.GetViewOnceMessageV2Extension()} {
+		if wrapper.GetMessage() != nil {
+			msg, wrapped = wrapper.GetMessage(), true
+			break
+		}
+	}
+	switch {
+	case msg.GetImageMessage() != nil:
+		return wrapped || msg.GetImageMessage().GetViewOnce()
+	case msg.GetVideoMessage() != nil:
+		return wrapped || msg.GetVideoMessage().GetViewOnce()
+	case msg.GetAudioMessage() != nil:
+		return wrapped || msg.GetAudioMessage().GetViewOnce()
+	case msg.GetPtvMessage() != nil:
+		return wrapped || msg.GetPtvMessage().GetViewOnce()
+	}
+	return false
 }

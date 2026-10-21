@@ -329,6 +329,19 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			Record:         record,
 			FromFullSync:   fullSync,
 		}
+	case appstate.IndexDeleteIndividualCallLog:
+		act := mutation.Action.GetDeleteIndividualCallLog()
+		if act == nil {
+			cli.Log.Warnf("Skipping delete_individual_call_log mutation: missing action value")
+			return
+		}
+		eventToDispatch = &events.DeleteIndividualCallLog{
+			PeerJID:      jid,
+			IsIncoming:   act.GetIsIncoming(),
+			Timestamp:    ts,
+			Action:       act,
+			FromFullSync: fullSync,
+		}
 	case appstate.IndexQuickReply:
 		// The shortcut is the index's second part, and it is what identifies the
 		// quick reply: the action itself repeats it only when it is being set.

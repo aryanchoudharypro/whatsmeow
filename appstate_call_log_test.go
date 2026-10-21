@@ -7,6 +7,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 
 	"go.mau.fi/whatsmeow/appstate"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/proto/waServerSync"
 	"go.mau.fi/whatsmeow/proto/waSyncAction"
 	"go.mau.fi/whatsmeow/store"
@@ -192,5 +193,50 @@ func TestDisableLinkPreviewsMutationDispatchesEvent(t *testing.T) {
 		if evt.Disabled != disabled {
 			t.Errorf("Disabled = %v, want %v", evt.Disabled, disabled)
 		}
+	}
+}
+
+func TestDeleteIndividualCallLogMutationDispatchesEvent(t *testing.T) {
+	m := appstate.Mutation{
+		Operation: waServerSync.SyncdMutation_SET,
+		Index:     []string{appstate.IndexDeleteIndividualCallLog, peerPN + "@s.whatsapp.net"},
+		Action: &waSyncAction.SyncActionValue{
+			Timestamp: proto.Int64(1_700_000_000_000),
+			DeleteIndividualCallLog: &waSyncAction.DeleteIndividualCallLogAction{
+				PeerJID:    proto.String(peerPN + "@s.whatsapp.net"),
+				IsIncoming: proto.Bool(true),
+			},
+		},
+	}
+	evt, ok := dispatchCallLog(t, m).(*events.DeleteIndividualCallLog)
+	if !ok {
+		t.Fatalf("expected *events.DeleteIndividualCallLog")
+	}
+	if evt.PeerJID.User != peerPN || !evt.IsIncoming {
+		t.Errorf("unexpected event %+v", evt)
+	}
+}
+
+func TestDispatchCallLogHistory(t *testing.T) {
+	device := &store.Device{ID: &types.JID{User: ownPN, Server: types.DefaultUserServer}}
+	cli := &Client{Log: waLog.Noop, Store: device}
+	var got []*events.CallLogHistory
+	cli.AddEventHandler(func(e any) {
+		if c, ok := e.(*events.CallLogHistory); ok {
+			got = append(got, c)
+		}
+	})
+	cli.dispatchCallLogHistory(&waHistorySync.HistorySync{CallLogRecords: []*waSyncAction.CallLogRecord{
+		{CallID: proto.String("a"), CallCreatorJID: proto.String(ownPN + "@s.whatsapp.net"), StartTime: proto.Int64(1_700_000_000)},
+		{CallID: proto.String("b")},
+	}})
+	if len(got) != 2 {
+		t.Fatalf("got %d events, want 2", len(got))
+	}
+	if !got[0].FromMe || !got[0].FromMeKnown || got[0].Timestamp.Unix() != 1_700_000_000 {
+		t.Errorf("first: %+v", got[0])
+	}
+	if got[1].FromMeKnown {
+		t.Errorf("second should have unknown direction: %+v", got[1])
 	}
 }

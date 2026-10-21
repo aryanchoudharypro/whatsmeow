@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime/debug"
+	"time"
 
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waHistorySync"
@@ -117,6 +118,7 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 		cli.Log.Errorf("History sync %s was not handled, withholding its receipt", dl.receiptID)
 		return
 	}
+	cli.dispatchCallLogHistory(dl.blob)
 	cli.sendDeferredHistorySyncReceipt(ctx, dl)
 	notif := dl.notif
 	// History carried inline in the notification was never uploaded.
@@ -126,5 +128,29 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 	err := cli.DeleteMedia(ctx, MediaHistory, notif.GetDirectPath(), notif.GetFileEncSHA256(), notif.GetEncHandle())
 	if err != nil {
 		cli.Log.Warnf("Failed to delete history sync media from server: %v", err)
+	}
+}
+
+// dispatchCallLogHistory emits one events.CallLogHistory per call record in a
+// history sync chunk. Direction is derived from the call's creator, the way
+// call_log app-state records are, because the record's own isIncoming is
+// written differently by different clients.
+func (cli *Client) dispatchCallLogHistory(blob *waHistorySync.HistorySync) {
+	for _, rec := range blob.GetCallLogRecords() {
+		if rec == nil {
+			continue
+		}
+		evt := &events.CallLogHistory{Record: rec, CallID: rec.GetCallID()}
+		if raw := rec.GetCallCreatorJID(); raw != "" {
+			if jid, err := types.ParseJID(raw); err == nil {
+				evt.CallCreatorJID = jid
+				evt.FromMe = cli.isOwnIdentity(jid)
+				evt.FromMeKnown = true
+			}
+		}
+		if st := rec.GetStartTime(); st > 0 {
+			evt.Timestamp = time.Unix(st, 0)
+		}
+		cli.dispatchEvent(evt)
 	}
 }

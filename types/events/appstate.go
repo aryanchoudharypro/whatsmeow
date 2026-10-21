@@ -51,6 +51,31 @@ type CallLogSync struct {
 	FromFullSync bool                        // Whether the action is emitted because of a fullSync.
 }
 
+// CallLogHistory is emitted for each call record carried by a history sync
+// chunk (HistorySync.callLogRecords), which the phone sends when
+// SupportCallLogHistory is set in the device props. It mirrors CallLogSync so
+// both channels can be stored the same way.
+type CallLogHistory struct {
+	CallCreatorJID types.JID // Zero when the record does not name its creator.
+	CallID         string    // The call's id; empty when the record carries none.
+	FromMe         bool      // Whether this account created the call, derived from CallCreatorJID. False when the creator is unknown.
+	FromMeKnown    bool      // Whether FromMe could be derived at all.
+	Timestamp      time.Time // The call's own start time. Zero when the record has none.
+
+	Record *waSyncAction.CallLogRecord
+}
+
+// DeleteIndividualCallLog is emitted when a single call is deleted from the
+// call history on another device. The action names the peer and the call's
+// direction, not its id, so the matching row has to be found from those.
+type DeleteIndividualCallLog struct {
+	PeerJID      types.JID // From the mutation index.
+	IsIncoming   bool      // Whether the deleted call was incoming, from the action.
+	Timestamp    time.Time
+	Action       *waSyncAction.DeleteIndividualCallLogAction
+	FromFullSync bool
+}
+
 // QuickReply is emitted when a quick reply (a saved shortcut and its canned
 // message) is added, edited or deleted from another device.
 type QuickReply struct {

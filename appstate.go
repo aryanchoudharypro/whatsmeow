@@ -405,8 +405,13 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 		// locked-chats UI) get everything they need from the event itself,
 		// same as they always had to build the send side (buildLockChat)
 		// entirely on their own before this event existed at all.
-		act := mutation.Action.GetLockChatAction()
-		eventToDispatch = &events.LockChat{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
+		// WAWebLockChatSync rejects a lock without `locked` as malformed;
+		// it isn't an unlock.
+		if act := mutation.Action.GetLockChatAction(); act != nil && act.Locked != nil {
+			eventToDispatch = &events.LockChat{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
+		} else {
+			cli.Log.Warnf("Skipping lock mutation for %s without a locked value", jid)
+		}
 	case appstate.IndexContact:
 		act := mutation.Action.GetContactAction()
 		eventToDispatch = &events.Contact{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}

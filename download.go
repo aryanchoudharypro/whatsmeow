@@ -17,6 +17,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -208,6 +209,39 @@ func (cli *Client) FetchStickerPack(ctx context.Context, packID string) (*types.
 		return nil, fmt.Errorf("no sticker pack found in response")
 	}
 	return &packs[0], nil
+}
+
+// FetchStickerStore lists WhatsApp's own sticker packs, the ones its sticker
+// store offers (WhatsApp Web's WAWebFetchFirstPartyStickerPacksAction). The
+// packs come without their stickers: fetch each one with FetchStickerPack.
+// locale is a language such as "en", and country an ISO code such as "IN",
+// or "default" when it isn't known.
+func (cli *Client) FetchStickerStore(ctx context.Context, locale, country string) ([]types.StickerPack, error) {
+	query := url.Values{"lottie": {"1"}, "cat": {"sticker_store_data"}, "id": {"all"}, "lg": {locale}, "country": {country}}
+	resp, err := cli.doMediaDownloadRequest(ctx, "https://static.whatsapp.net/sticker?"+query.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var raw []json.RawMessage
+	err = json.NewDecoder(resp.Body).Decode(&raw)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	packs := make([]types.StickerPack, 0, len(raw))
+	for _, item := range raw {
+		// A field of an unexpected type leaves just that field empty,
+		// rather than losing the whole store.
+		var pack types.StickerPack
+		var typeErr *json.UnmarshalTypeError
+		if err = json.Unmarshal(item, &pack); err == nil || errors.As(err, &typeErr) {
+			packs = append(packs, pack)
+		}
+	}
+	if len(packs) == 0 {
+		return nil, fmt.Errorf("no sticker packs found in response")
+	}
+	return packs, nil
 }
 
 // Download downloads the attachment from the given protobuf message.

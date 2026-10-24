@@ -37,6 +37,10 @@ type UploadResponse struct {
 	FileEncSHA256 []byte `json:"-"`
 	FileSHA256    []byte `json:"-"`
 	FileLength    uint64 `json:"-"`
+
+	// StreamingSidecar is set for encrypted video and audio uploads. Put it in the message's
+	// StreamingSidecar field, as WhatsApp Web does, so phones can play the media while it downloads.
+	StreamingSidecar []byte `json:"-"`
 }
 
 // Upload uploads the given attachment to WhatsApp servers.
@@ -89,6 +93,11 @@ func (cli *Client) Upload(ctx context.Context, plaintext []byte, appInfo MediaTy
 
 	dataHash := sha256.Sum256(dataToUpload)
 	resp.FileEncSHA256 = dataHash[:]
+	if hasStreamingSidecar(appInfo) {
+		sidecar := newSidecarHasher(macKey, iv)
+		sidecar.Write(dataToUpload)
+		resp.StreamingSidecar = sidecar.Sidecar()
+	}
 
 	err = cli.rawUpload(ctx, bytes.NewReader(dataToUpload), uint64(len(dataToUpload)), resp.FileEncSHA256, appInfo, false, &resp)
 	return
@@ -116,11 +125,20 @@ func (cli *Client) UploadReader(ctx context.Context, plaintext io.Reader, tempFi
 			_ = os.Remove(tempFileFile.Name())
 		}()
 	}
+	var sidecar *sidecarHasher
+	encryptTo := tempFile
+	if hasStreamingSidecar(appInfo) {
+		sidecar = newSidecarHasher(macKey, iv)
+		encryptTo = teeSidecar(tempFile, sidecar)
+	}
 	var uploadSize uint64
-	resp.FileSHA256, resp.FileEncSHA256, resp.FileLength, uploadSize, err = cbcutil.EncryptStream(cipherKey, iv, macKey, plaintext, tempFile)
+	resp.FileSHA256, resp.FileEncSHA256, resp.FileLength, uploadSize, err = cbcutil.EncryptStream(cipherKey, iv, macKey, plaintext, encryptTo)
 	if err != nil {
 		err = fmt.Errorf("failed to encrypt file: %w", err)
 		return
+	}
+	if sidecar != nil {
+		resp.StreamingSidecar = sidecar.Sidecar()
 	}
 	_, err = tempFile.Seek(0, io.SeekStart)
 	if err != nil {

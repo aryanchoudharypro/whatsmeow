@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -523,5 +524,53 @@ func TestCallTerminateDropsStateAndEmitsMediaStop(t *testing.T) {
 	}
 	if n := len(ce.filter(isCallTerminate)); n != 1 {
 		t.Errorf("CallTerminate dispatch count = %d, want 1", n)
+	}
+}
+
+func TestOnCallOfferFromOfflineQueueDoesNotRing(t *testing.T) {
+	self := mustGroupInviteAcceptRouterJID(t, "300003:14@lid")
+	creator := mustGroupInviteAcceptRouterJID(t, "100001:1@lid")
+	cli, log, ce := routerTestClient()
+	cli.Store = &store.Device{LID: self}
+	offer := waBinary.Node{
+		Tag:   "offer",
+		Attrs: waBinary.Attrs{"call-id": "OFFLINECID", "call-creator": creator},
+		Content: []waBinary.Node{{
+			Tag: "group_info",
+			Attrs: waBinary.Attrs{
+				"call-id":         "OFFLINECID",
+				"call-creator":    creator,
+				"transaction-id":  "1",
+				"media":           "audio",
+				"connected-limit": "32",
+			},
+			Content: []waBinary.Node{
+				groupInviteAcceptRouterParticipant(creator.ToNonAD(), creator, "connected", "web", true),
+				groupInviteAcceptRouterParticipant(self.ToNonAD(), self, "outgoing", "", false),
+			},
+		}},
+	}
+	meta := types.BasicCallMeta{From: creator, CallCreator: creator, CallID: "OFFLINECID", Offline: true}
+
+	cli.onCallOffer(context.Background(), &offer, meta, types.CallRemoteMeta{})
+
+	if cli.getCall(meta.CallID) != nil {
+		t.Fatal("offline offer registered call state")
+	}
+	offers := ce.filter(isCallOffer)
+	if len(offers) != 1 || !offers[0].(*events.CallOffer).Offline {
+		t.Fatalf("want one CallOffer marked Offline, got %v", offers)
+	}
+	if log.hasWarn("Failed to send call preaccept") {
+		t.Fatal("offline offer tried to preaccept")
+	}
+}
+
+func TestHasAttrIsPresenceOnly(t *testing.T) {
+	if !hasAttr(&waBinary.Node{Attrs: waBinary.Attrs{"offline": ""}}, "offline") {
+		t.Fatal("empty offline attr not seen")
+	}
+	if hasAttr(&waBinary.Node{Attrs: waBinary.Attrs{"e": "1766847151"}}, "offline") {
+		t.Fatal("e attr taken for offline")
 	}
 }

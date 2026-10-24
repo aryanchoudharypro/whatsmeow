@@ -43,6 +43,9 @@ func (cli *Client) handleCallEvent(ctx context.Context, node *waBinary.Node) {
 		CallCreator: cag.JID("call-creator"),
 		CallID:      cag.String("call-id"),
 		GroupJID:    cag.OptionalJIDOrEmpty("group-jid"),
+		// WA Web's callParser: is_offline = hasAttr("offline") on the <call>.
+		// Not the `e` attribute, which is a timestamp.
+		Offline: hasAttr(node, "offline"),
 	}
 	if basicMeta.CallCreator.Server == types.HiddenUserServer {
 		basicMeta.CallCreatorAlt = cag.OptionalJIDOrEmpty("caller_pn")
@@ -155,7 +158,26 @@ func (cli *Client) onCallOffer(ctx context.Context, child *waBinary.Node, meta t
 			return
 		}
 	}
+	if meta.Offline {
+		// The callKey is still decrypted above, so the Signal session keeps
+		// up with the caller, but the call itself is long gone: no preaccept
+		// and no call state. WA Web passes it on only to log a missed call.
+		cli.Log.Debugf("Call offer replayed from the offline queue, not ringing, call_id: %s", meta.CallID)
+		cli.dispatchEvent(&events.CallOffer{
+			BasicCallMeta:  meta,
+			CallRemoteMeta: remote,
+			Data:           child,
+			Video:          voip.OfferHasVideo(child),
+			Group:          group,
+		})
+		return
+	}
 	cli.acceptInboundOffer(ctx, child, meta, remote, callKey, group)
+}
+
+func hasAttr(node *waBinary.Node, key string) bool {
+	_, ok := node.Attrs[key]
+	return ok
 }
 
 func (cli *Client) acceptInboundOffer(

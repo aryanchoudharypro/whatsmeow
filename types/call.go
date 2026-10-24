@@ -15,6 +15,11 @@ type BasicCallMeta struct {
 	CallCreatorAlt JID
 	CallID         string
 	GroupJID       JID
+	// Offline is set when the server replayed this stanza from the offline
+	// queue on reconnect, rather than delivering it live. An offline offer
+	// is a call that rang while this device was away: WhatsApp Web logs it
+	// as missed and never rings for it.
+	Offline bool
 }
 
 type CallRemoteMeta struct {

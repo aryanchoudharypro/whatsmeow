@@ -263,9 +263,11 @@ func (cli *Client) acceptInboundOffer(
 	}
 	cli.applyVoipSettingsCodec(cs, child, meta.CallID)
 
-	pre := buildInboundPreaccept(cs, meta, cli.generateRequestID(), isVideo)
-	if err := cli.sendNode(ctx, pre); err != nil {
-		cli.Log.Warnf("Failed to send call preaccept, call_id: %s: %v", meta.CallID, err)
+	if !cli.ExternalCallSignaling {
+		pre := buildInboundPreaccept(cs, meta, cli.generateRequestID(), isVideo)
+		if err := cli.sendNode(ctx, pre); err != nil {
+			cli.Log.Warnf("Failed to send call preaccept, call_id: %s: %v", meta.CallID, err)
+		}
 	}
 
 	if isNew {
@@ -318,7 +320,7 @@ func (cli *Client) onRelayLatency(ctx context.Context, meta types.BasicCallMeta,
 		return
 	}
 	cli.captureCallRelay(cs, child)
-	if cs.outgoing {
+	if cs.outgoing || cli.ExternalCallSignaling {
 		return
 	}
 

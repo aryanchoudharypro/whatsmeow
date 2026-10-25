@@ -574,3 +574,40 @@ func TestHasAttrIsPresenceOnly(t *testing.T) {
 		t.Fatal("e attr taken for offline")
 	}
 }
+
+func TestAcceptInboundOfferLeavesPreacceptToExternalEngine(t *testing.T) {
+	cli, log, ce := routerTestClient()
+	cli.ExternalCallSignaling = true
+	meta := routerCallMeta()
+	offerChild := waBinary.Node{Tag: "offer"}
+
+	cs := cli.acceptInboundOffer(context.Background(), &offerChild, meta, types.CallRemoteMeta{}, bytes.Repeat([]byte{0x01}, 32))
+
+	if cs == nil || cli.getCall(meta.CallID) != cs {
+		t.Fatal("call state not registered")
+	}
+	if log.hasWarn("preaccept") {
+		t.Error("sent a preaccept the external engine sends itself")
+	}
+	if n := len(ce.filter(isCallOffer)); n != 1 {
+		t.Errorf("CallOffer dispatch count = %d, want 1", n)
+	}
+}
+
+func TestRelayLatencyLeftToExternalEngine(t *testing.T) {
+	cli, log, _ := routerTestClient()
+	cli.ExternalCallSignaling = true
+	meta := routerCallMeta()
+	cli.acceptInboundOffer(context.Background(), &waBinary.Node{Tag: "offer"}, meta, types.CallRemoteMeta{}, bytes.Repeat([]byte{0x01}, 32))
+	probe := waBinary.Node{Tag: "relaylatency", Content: []waBinary.Node{{
+		Tag:     "te",
+		Attrs:   waBinary.Attrs{"latency": "33554523", "relay_name": "abc1c01"},
+		Content: []byte{1, 2, 3, 4, 5, 6},
+	}}}
+
+	cli.onRelayLatency(context.Background(), meta, &probe)
+
+	if log.hasWarn("relaylatency") {
+		t.Error("answered a relaylatency probe the external engine answers itself")
+	}
+}

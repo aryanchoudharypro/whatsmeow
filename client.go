@@ -99,6 +99,12 @@ type Client struct {
 	EmitAppStateEventsOnFullSync bool
 	AppStateDebugLogs            bool
 
+	// ExternalCallSignaling is set by a VoIP engine (meowcaller) that sends its
+	// own <preaccept> and <relaylatency> replies for incoming calls. Without it
+	// each went out twice, and the relaylatency echo here endorsed relays
+	// outside the offer that the engine deliberately leaves out.
+	ExternalCallSignaling bool
+
 	AutomaticMessageRerequestFromPhone bool
 	pendingPhoneRerequests             map[types.MessageID]context.CancelFunc
 	pendingPhoneRerequestsLock         sync.RWMutex

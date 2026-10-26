@@ -89,6 +89,7 @@ type Client struct {
 	SynchronousAck             bool
 	EnableDecryptedEventBuffer bool
 	lastDecryptedBufferClear   time.Time
+	UnifiedSessionInterval     time.Duration
 
 	DisableLoginAutoReconnect bool
 
@@ -1272,15 +1273,20 @@ func (cli *Client) getUnifiedSessionID() string {
 	return strconv.FormatInt(unifiedID, 10)
 }
 
-func (cli *Client) sendUnifiedSession() {
+func (cli *Client) sendUnifiedSession(checkLastSend bool) {
 	if cli == nil {
 		return
 	}
 	// WhatsApp Web shares a session ID once when it is made. Connecting and
 	// then coming online right away would otherwise send two in a row.
+	// checkLastSend additionally honors UnifiedSessionInterval.
 	now := time.Now().UnixMilli()
 	last := cli.lastUnifiedSession.Load()
-	if now-last < unifiedSessionMinGap.Milliseconds() || !cli.lastUnifiedSession.CompareAndSwap(last, now) {
+	gap := unifiedSessionMinGap
+	if checkLastSend && cli.UnifiedSessionInterval > gap {
+		gap = cli.UnifiedSessionInterval
+	}
+	if now-last < gap.Milliseconds() || !cli.lastUnifiedSession.CompareAndSwap(last, now) {
 		return
 	}
 

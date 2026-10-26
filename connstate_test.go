@@ -639,17 +639,17 @@ func TestABPropsAreOnlyFetchedAgainWhenTheServerNamesANewSet(t *testing.T) {
 func TestUnifiedSessionIsNotSentTwiceInARow(t *testing.T) {
 	cli := NewClient(newTestDevice(&memConnState{}), nil)
 	// Not connected, so nothing goes out; only the gate is under test.
-	cli.sendUnifiedSession()
+	cli.sendUnifiedSession(false)
 	first := cli.lastUnifiedSession.Load()
 	if first == 0 {
 		t.Fatal("the first send wasn't recorded")
 	}
-	cli.sendUnifiedSession()
+	cli.sendUnifiedSession(false)
 	if cli.lastUnifiedSession.Load() != first {
 		t.Fatal("a second send right after the first went through the gate")
 	}
 	cli.lastUnifiedSession.Store(first - unifiedSessionMinGap.Milliseconds() - 1)
-	cli.sendUnifiedSession()
+	cli.sendUnifiedSession(false)
 	if cli.lastUnifiedSession.Load() <= first-unifiedSessionMinGap.Milliseconds() {
 		t.Fatal("a send after the gap was held back")
 	}

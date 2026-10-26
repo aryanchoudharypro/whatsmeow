@@ -210,7 +210,7 @@ func (cli *Client) handleConnectSuccess(ctx context.Context, node *waBinary.Node
 	cli.deleteExpiredPrivacyTokens()
 	cli.bumpLoginCounter(ctx)
 	go func() {
-		cli.sendUnifiedSession()
+		cli.sendUnifiedSession(true)
 		if dbCount, err := cli.Store.PreKeys.UploadedPreKeyCount(ctx); err != nil {
 			cli.Log.Errorf("Failed to get number of prekeys in database: %v", err)
 		} else if serverCount, err := cli.getServerPreKeyCount(ctx); err != nil {

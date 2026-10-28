@@ -1121,7 +1121,7 @@ func (cli *Client) UpdateBlocklistWithDHash(ctx context.Context, jid types.JID, 
 			}
 			lid = info[jid].LID
 			if lid.IsEmpty() {
-				return nil, fmt.Errorf("no LID found for %s from server", jid)
+				return nil, fmt.Errorf("%w: no LID found for %s from server", ErrRecipientNotOnWhatsApp, jid)
 			}
 		}
 		lidJID = lid

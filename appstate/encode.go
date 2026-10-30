@@ -492,6 +492,24 @@ func BuildStatusPrivacy(action *waSyncAction.StatusPrivacyAction) PatchInfo {
 	}
 }
 
+// BuildDisableLinkPreviews builds an app state patch for the account's
+// "Turn off link previews" privacy setting (WAWebDisableLinkPreviewsSync).
+// Linked devices stop building previews for links they send while it's on.
+func BuildDisableLinkPreviews(disabled bool) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegular,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexSettingDisableLinkPreviews},
+			Version: 8,
+			Value: &waSyncAction.SyncActionValue{
+				PrivacySettingDisableLinkPreviewsAction: &waSyncAction.PrivacySettingDisableLinkPreviewsAction{
+					IsPreviewsDisabled: &disabled,
+				},
+			},
+		}},
+	}
+}
+
 // BuildUserStatusMute builds an app state patch muting or unmuting someone's
 // status updates (WAWebUserStatusMuteSync).
 func BuildUserStatusMute(target types.JID, muted bool) PatchInfo {

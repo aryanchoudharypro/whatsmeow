@@ -53,6 +53,16 @@ func (cli *Client) handleEncryptedMessage(ctx context.Context, node *waBinary.No
 		cli.StoreLIDPNMapping(ctx, info.SenderAlt, info.Sender)
 	} else if !info.RecipientAlt.IsEmpty() {
 		cli.StoreLIDPNMapping(ctx, info.RecipientAlt, info.Chat)
+		// Our own message to a number that moved to a new account: the
+		// server names its current LID too, which WA Web stores last, as
+		// the current one (learning source recipient-latest-lid).
+		if !info.RecipientLatestLID.IsEmpty() {
+			pn := info.Chat
+			if pn.Server != types.DefaultUserServer {
+				pn = info.RecipientAlt
+			}
+			cli.StoreLIDPNMapping(ctx, info.RecipientLatestLID.ToNonAD(), pn.ToNonAD())
+		}
 	}
 	if info.VerifiedName != nil && len(info.VerifiedName.Details.GetVerifiedName()) > 0 {
 		go cli.updateBusinessName(ctx, info.Sender, info.SenderAlt, info, info.VerifiedName.Details.GetVerifiedName())
@@ -160,6 +170,7 @@ func (cli *Client) parseMessageSource(node *waBinary.Node, requireParticipant bo
 		} else {
 			source.RecipientAlt = ag.OptionalJIDOrEmpty("peer_recipient_lid")
 		}
+		source.RecipientLatestLID = ag.OptionalJIDOrEmpty("recipient_latest_lid")
 	} else if from.IsBot() {
 		source.Sender = from
 		meta := node.GetChildByTag("meta")
@@ -1226,12 +1237,22 @@ func (cli *Client) storeLIDSyncMessage(ctx context.Context, msg []byte) {
 				Msg("Saved chat DB LID migration timestamp")
 		}
 	}
-	lidPairs := make([]store.LIDMapping, len(decoded.PnToLidMappings))
-	for i, mapping := range decoded.PnToLidMappings {
-		lidPairs[i] = store.LIDMapping{
-			LID: types.JID{User: strconv.FormatUint(mapping.GetAssignedLid(), 10), Server: types.HiddenUserServer},
-			PN:  types.JID{User: strconv.FormatUint(mapping.GetPn(), 10), Server: types.DefaultUserServer},
+	lidPairs := make([]store.LIDMapping, 0, len(decoded.PnToLidMappings))
+	for _, mapping := range decoded.PnToLidMappings {
+		// When the number has moved to a new account, latestLid is its
+		// current LID and assignedLid the old one, whose chat WhatsApp keeps
+		// apart as "deprecated". Messages sent to that one land there.
+		lid := mapping.GetLatestLid()
+		if lid == 0 {
+			lid = mapping.GetAssignedLid()
 		}
+		if lid == 0 || mapping.GetPn() == 0 {
+			continue
+		}
+		lidPairs = append(lidPairs, store.LIDMapping{
+			LID: types.JID{User: strconv.FormatUint(lid, 10), Server: types.HiddenUserServer},
+			PN:  types.JID{User: strconv.FormatUint(mapping.GetPn(), 10), Server: types.DefaultUserServer},
+		})
 	}
 	err = cli.Store.LIDs.PutManyLIDMappings(ctx, lidPairs)
 	if err != nil {
@@ -1302,16 +1323,11 @@ func (cli *Client) storeHistoricalPNLIDMappings(ctx context.Context, mappings []
 			PN:  pn,
 		})
 	}
-	err := cli.Store.LIDs.PutManyLIDMappings(ctx, lidPairs)
-	if err != nil {
-		zerolog.Ctx(ctx).Err(err).
-			Int("pair_count", len(lidPairs)).
-			Msg("Failed to store phone number to LID mappings from history sync")
-	} else {
-		zerolog.Ctx(ctx).Debug().
-			Int("pair_count", len(lidPairs)).
-			Msg("Stored PN-LID mappings from history sync")
-	}
+	// These can name a contact's old, replaced LID (see StoreObservedLIDMappings).
+	cli.StoreObservedLIDMappings(ctx, lidPairs)
+	zerolog.Ctx(ctx).Debug().
+		Int("pair_count", len(lidPairs)).
+		Msg("Stored PN-LID mappings from history sync")
 }
 
 func (cli *Client) handleDecryptedMessage(ctx context.Context, info *types.MessageInfo, msg *waE2E.Message, retryCount int) (handlerFailed bool) {

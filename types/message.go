@@ -33,6 +33,8 @@ type MessageSource struct {
 	AddressingMode AddressingMode // The addressing mode of the message (phone number or LID)
 	SenderAlt      JID            // The alternative address of the user who sent the message
 	RecipientAlt   JID            // The alternative address of the recipient of the message for DMs.
+	// For our own DMs to a number that moved to a new account: the recipient's current LID.
+	RecipientLatestLID JID
 
 	// When sending a read receipt to a broadcast list message, the Chat is the broadcast list
 	// and Sender is you, so this field contains the recipient of the read receipt.

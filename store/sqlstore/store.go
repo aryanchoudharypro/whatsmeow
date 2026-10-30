@@ -972,12 +972,12 @@ var convertContactRow = dbutil.ConvertRowFn[*contactTuple](func(rows dbutil.Scan
 })
 
 func (s *SQLStore) GetAllContacts(ctx context.Context) (map[types.JID]types.ContactInfo, error) {
-	s.contactCacheLock.Lock()
-	defer s.contactCacheLock.Unlock()
-	output := make(map[types.JID]types.ContactInfo, len(s.contactCache))
+	// Not copied into contactCache: that would keep every contact in memory
+	// for the rest of the session, when lookups only ever need a few of them
+	// (getContact caches those as they're asked for).
+	output := make(map[types.JID]types.ContactInfo)
 	err := convertContactRow.NewRowIter(s.db.Query(ctx, getAllContactsQuery, s.JID)).Iter(func(tuple *contactTuple) (bool, error) {
 		output[tuple.JID] = *tuple.Info
-		s.contactCache[tuple.JID] = tuple.Info
 		return true, nil
 	})
 	return output, err

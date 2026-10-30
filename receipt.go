@@ -213,7 +213,9 @@ func (cli *Client) MarkRead(ctx context.Context, ids []types.MessageID, timestam
 			"t":    timestamp.Unix(),
 		},
 	}
-	if chat.Server == types.NewsletterServer || cli.GetPrivacySettings(ctx).ReadReceipts == types.PrivacySettingNone {
+	// Turning read receipts off doesn't apply to groups: WA Web still sends
+	// them a plain read there, so the group's members see blue ticks.
+	if chat.Server == types.NewsletterServer || (chat.Server != types.GroupServer && cli.GetPrivacySettings(ctx).ReadReceipts == types.PrivacySettingNone) {
 		switch receiptType {
 		case types.ReceiptTypeRead:
 			node.Attrs["type"] = string(types.ReceiptTypeReadSelf)

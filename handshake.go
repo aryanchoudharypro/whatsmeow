@@ -25,14 +25,14 @@ import (
 const NoiseHandshakeResponseTimeout = 20 * time.Second
 const WACertIssuerSerial = 0
 
+var ErrHandshakeTimeout = errors.New("timed out waiting for handshake response")
+
 var WACertPubKey = [...]byte{0x14, 0x23, 0x75, 0x57, 0x4d, 0xa, 0x58, 0x71, 0x66, 0xaa, 0xe7, 0x1e, 0xbe, 0x51, 0x64, 0x37, 0xc4, 0xa2, 0x8b, 0x73, 0xe3, 0x69, 0x5c, 0x6c, 0xe1, 0xf7, 0xf9, 0x54, 0x5d, 0xa8, 0xee, 0x6b}
 
 // errIKRejected marks a Noise IK resume that failed in a way the cached
 // server key explains (a decrypt or parse failure after the server answered),
 // as opposed to a timeout or a dropped connection.
 var errIKRejected = errors.New("noise IK resume rejected")
-
-var errHandshakeTimeout = errors.New("timed out waiting for handshake response")
 
 // doHandshake runs the Noise handshake for the WhatsApp web API.
 //
@@ -93,11 +93,9 @@ func sendClientHello(fs *socket.FrameSocket, hello *waWa6.HandshakeMessage_Clien
 	select {
 	case resp = <-fs.Frames:
 	case <-fs.Context().Done():
-		// Without this, a server that hangs up on the hello would only be
-		// noticed when the timeout below runs out.
-		return nil, fmt.Errorf("socket closed while waiting for handshake response")
+		return nil, fmt.Errorf("%w while waiting for handshake response", socket.ErrSocketClosed)
 	case <-time.After(NoiseHandshakeResponseTimeout):
-		return nil, errHandshakeTimeout
+		return nil, ErrHandshakeTimeout
 	}
 	var handshakeResponse waWa6.HandshakeMessage
 	err = proto.Unmarshal(resp, &handshakeResponse)

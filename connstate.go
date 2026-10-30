@@ -220,7 +220,7 @@ func (cli *Client) dropResumeHints(ctx context.Context, hints resumeHints, hands
 	defer cs.Unlock()
 	if hints.serverStatic != nil {
 		cs.ikFailures++
-		if !errors.Is(handshakeErr, errHandshakeTimeout) {
+		if !errors.Is(handshakeErr, ErrHandshakeTimeout) {
 			cli.Log.Warnf("Noise IK resume failed, forgetting the cached server certificate chain")
 			cs.certChain = nil
 			cli.putConnState(ctx, connStateServerCertChain, nil)

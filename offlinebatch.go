@@ -2,6 +2,7 @@ package whatsmeow
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -24,15 +25,36 @@ const (
 	offlineStanzaTimeout = 60 * time.Second
 )
 
+// offlineBatchState holds the drain of the current connection. Each announced
+// backlog gets a fresh offlineBatchRun, so a send or watchdog left over from
+// an earlier connection can only touch the run it started with, never the
+// inflight flag or activity counter of the one that replaced it.
 type offlineBatchState struct {
-	armed      atomic.Bool
-	generation atomic.Uint64
+	run atomic.Pointer[offlineBatchRun]
+}
+
+type offlineBatchRun struct {
+	armed atomic.Bool
 	// inflight is true between sending a batch request and the first stanza
 	// of its answer; that stanza's arrival schedules the next request.
-	inflight  atomic.Bool
+	inflight atomic.Bool
+	// activity is bumped by every offline stanza and every request sent, so
+	// the watchdog's window always starts after the latest of them.
 	activity  atomic.Uint64
-	total     atomic.Int64
+	total     int64
 	processed atomic.Int64
+}
+
+// current returns the armed run, or nil when no drain is going on.
+func (st *offlineBatchState) current() *offlineBatchRun {
+	if run := st.run.Load(); run != nil && run.armed.Load() {
+		return run
+	}
+	return nil
+}
+
+func (st *offlineBatchState) isCurrent(run *offlineBatchRun) bool {
+	return st.run.Load() == run && run.armed.Load()
 }
 
 func buildOfflineBatchRequest(count int) waBinary.Node {
@@ -48,51 +70,56 @@ func buildOfflineBatchRequest(count int) waBinary.Node {
 // startOfflineBatches arms the pull loop for an announced backlog of total
 // stanzas and requests the first batch.
 func (cli *Client) startOfflineBatches(ctx context.Context, total int) {
-	st := &cli.offlineBatch
-	gen := st.generation.Add(1)
-	st.total.Store(int64(total))
-	st.processed.Store(0)
-	st.activity.Store(0)
-	st.inflight.Store(true)
-	st.armed.Store(true)
+	run := &offlineBatchRun{total: int64(total)}
+	run.inflight.Store(true)
+	run.armed.Store(true)
+	if old := cli.offlineBatch.run.Swap(run); old != nil {
+		old.armed.Store(false)
+	}
 	cli.Log.Infof("Offline backlog of %d stanzas announced, requesting the first batch of %d", total, offlineBatchSize)
-	go cli.offlineBatchWatchdog(ctx, gen)
+	go cli.offlineBatchWatchdog(ctx, run)
 	cli.sendOfflineBatch(ctx)
 }
 
 // stopOfflineBatches disarms the pull loop (backlog done, or connection gone).
 func (cli *Client) stopOfflineBatches() {
-	cli.offlineBatch.armed.Store(false)
+	if run := cli.offlineBatch.run.Load(); run != nil {
+		run.armed.Store(false)
+	}
 }
 
 // noteOfflineStanza is called for every stanza carrying the offline attribute.
 func (cli *Client) noteOfflineStanza(ctx context.Context) {
 	st := &cli.offlineBatch
-	if !st.armed.Load() {
+	run := st.current()
+	if run == nil {
 		return
 	}
-	st.activity.Add(1)
-	pending := st.total.Load() - st.processed.Add(1)
+	run.activity.Add(1)
+	pending := run.total - run.processed.Add(1)
 	if pending <= 0 {
 		// Nothing more is owed; the <ib><offline> end marker completes it.
 		return
 	}
-	if !st.inflight.CompareAndSwap(true, false) {
+	if !run.inflight.CompareAndSwap(true, false) {
 		return
 	}
-	gen := st.generation.Load()
 	go func() {
 		time.Sleep(offlineBatchDebounce)
-		if !st.armed.Load() || st.generation.Load() != gen || cli.offlineSyncDone.Load() {
+		if !st.isCurrent(run) || cli.offlineSyncDone.Load() {
 			return
 		}
+		// Published before the send rather than after it: the answer can
+		// start arriving while sendNode is still returning, and its first
+		// stanza has to find the batch in flight to schedule the next one.
+		// Setting it afterwards would also undo a claim that stanza already
+		// made and let a second request go out for the same batch. The
+		// activity bump opens a fresh watchdog window for the request.
+		run.activity.Add(1)
+		run.inflight.Store(true)
 		cli.sendOfflineBatch(ctx)
-		if st.armed.Load() && st.generation.Load() == gen {
-			st.inflight.Store(true)
-		}
 	}()
 }
-
 func (cli *Client) sendOfflineBatch(ctx context.Context) {
 	// Acknowledge what the previous batch delivered before asking for more.
 	cli.flushOfflineReceipts(ctx)
@@ -104,26 +131,33 @@ func (cli *Client) sendOfflineBatch(ctx context.Context) {
 }
 
 // offlineBatchWatchdog completes a drain the server has stopped feeding.
-func (cli *Client) offlineBatchWatchdog(ctx context.Context, gen uint64) {
+func (cli *Client) offlineBatchWatchdog(ctx context.Context, run *offlineBatchRun) {
 	st := &cli.offlineBatch
-	seen := st.activity.Load()
+	seen := run.activity.Load()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(offlineStanzaTimeout):
 		}
-		if !st.armed.Load() || st.generation.Load() != gen || cli.offlineSyncDone.Load() {
+		if !st.isCurrent(run) || cli.offlineSyncDone.Load() {
 			return
 		}
-		if current := st.activity.Load(); current != seen {
+		if current := run.activity.Load(); current != seen {
 			seen = current
 			continue
 		}
-		if !st.armed.CompareAndSwap(true, false) {
+		// A stanza or request landing between the read above and this
+		// decision fails the swap, so a drain still being fed is never
+		// completed behind the server's back.
+		if !run.activity.CompareAndSwap(seen, math.MaxUint64) {
+			seen = run.activity.Load()
+			continue
+		}
+		if !run.armed.CompareAndSwap(true, false) {
 			return
 		}
-		processed := int(st.processed.Load())
+		processed := int(run.processed.Load())
 		cli.Log.Warnf("No offline stanza for %s; completing the offline sync at %d stanzas", offlineStanzaTimeout, processed)
 		cli.offlineSyncDone.Store(true)
 		cli.flushOfflineReceipts(ctx)

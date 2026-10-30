@@ -23,9 +23,9 @@ func TestOfflineBatchPullLoop(t *testing.T) {
 	cli := NewClient(&store.Device{}, waLog.Noop)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	st := &cli.offlineBatch
 
 	cli.startOfflineBatches(ctx, 500)
+	st := cli.offlineBatch.current()
 	if !st.armed.Load() || !st.inflight.Load() {
 		t.Fatal("not armed with the first batch in flight")
 	}
@@ -57,5 +57,59 @@ func TestOfflineBatchPullLoop(t *testing.T) {
 	cli.noteOfflineStanza(ctx)
 	if st.processed.Load() != 500 {
 		t.Fatal("a disarmed loop kept counting")
+	}
+}
+
+func TestOfflineBatchContinuationPublishesBeforeSending(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cli.startOfflineBatches(ctx, 500)
+	run := cli.offlineBatch.current()
+	cli.noteOfflineStanza(ctx)
+	before := run.activity.Load()
+	deadline := time.Now().Add(2 * time.Second)
+	for !run.inflight.Load() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !run.inflight.Load() {
+		t.Fatal("continuation never published the next batch")
+	}
+	if run.activity.Load() == before {
+		t.Fatal("a request going out didn't open a fresh watchdog window")
+	}
+	// The answer's first stanza claims the batch; nothing republishes it
+	// behind that claim once the send returns.
+	cli.noteOfflineStanza(ctx)
+	if run.inflight.Load() {
+		t.Fatal("first arrival didn't claim the continuation")
+	}
+}
+
+func TestOfflineBatchOldRunCannotTouchItsReplacement(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cli.startOfflineBatches(ctx, 500)
+	old := cli.offlineBatch.current()
+	cli.noteOfflineStanza(ctx)
+	// A reconnect announces a new backlog before the old continuation fires.
+	cli.stopOfflineBatches()
+	cli.startOfflineBatches(ctx, 300)
+	cur := cli.offlineBatch.current()
+	if cur == old || old.armed.Load() {
+		t.Fatal("the old run is still armed")
+	}
+	if !cur.inflight.CompareAndSwap(true, false) {
+		t.Fatal("the new run's first batch isn't in flight")
+	}
+	time.Sleep(3 * offlineBatchDebounce)
+	if old.inflight.Load() || cur.inflight.Load() {
+		t.Fatal("the old run's continuation republished a batch")
+	}
+	if cur.activity.Load() != 0 || cur.processed.Load() != 0 {
+		t.Fatal("the old run's continuation touched the new run")
 	}
 }

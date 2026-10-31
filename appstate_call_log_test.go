@@ -2,6 +2,7 @@ package whatsmeow
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	waLog "go.mau.fi/whatsmeow/util/log"
@@ -238,5 +239,43 @@ func TestDispatchCallLogHistory(t *testing.T) {
 	}
 	if got[1].FromMeKnown {
 		t.Errorf("second should have unknown direction: %+v", got[1])
+	}
+}
+
+func TestSettingsSyncMutationDispatchesEvent(t *testing.T) {
+	patch := appstate.BuildSettingsSync(waSyncAction.SettingsSyncAction_HYBRID, waSyncAction.SettingsSyncAction_IS_ENTER_TO_SEND_ENABLED, "",
+		&waSyncAction.SettingsSyncAction{IsEnterToSendEnabled: proto.Bool(false)})
+	mi := patch.Mutations[0]
+	if want := []string{"settings_sync", "2", "26", "app"}; fmt.Sprint(mi.Index) != fmt.Sprint(want) {
+		t.Fatalf("index = %v, want %v", mi.Index, want)
+	}
+	if patch.Type != appstate.WAPatchRegularLow || mi.Version != 1 {
+		t.Fatalf("patch %s v%d, want regular_low v1", patch.Type, mi.Version)
+	}
+	mi.Value.Timestamp = proto.Int64(1_700_000_000_000)
+	evt, ok := dispatchCallLog(t, appstate.Mutation{Operation: waServerSync.SyncdMutation_SET, Index: mi.Index, Action: mi.Value}).(*events.SettingsSync)
+	if !ok {
+		t.Fatal("settings_sync dispatched no event")
+	}
+	if evt.Platform != waSyncAction.SettingsSyncAction_HYBRID || evt.Key != waSyncAction.SettingsSyncAction_IS_ENTER_TO_SEND_ENABLED ||
+		evt.Target != appstate.SettingsSyncAppTarget || evt.Action.IsEnterToSendEnabled == nil || evt.Action.GetIsEnterToSendEnabled() {
+		t.Errorf("unexpected event %+v", evt)
+	}
+	if evt := dispatchCallLog(t, appstate.Mutation{Operation: waServerSync.SyncdMutation_SET, Index: []string{"settings_sync", "1"}, Action: mi.Value}); evt != nil {
+		t.Errorf("short index dispatched %T", evt)
+	}
+}
+
+func TestPrimaryFeatureMutationDispatchesEvent(t *testing.T) {
+	evt, ok := dispatchCallLog(t, appstate.Mutation{
+		Operation: waServerSync.SyncdMutation_SET,
+		Index:     []string{appstate.IndexPrimaryFeature},
+		Action: &waSyncAction.SyncActionValue{
+			Timestamp:      proto.Int64(1_700_000_000_000),
+			PrimaryFeature: &waSyncAction.PrimaryFeature{Flags: []string{"settings_sync_enabled"}},
+		},
+	}).(*events.PrimaryFeatures)
+	if !ok || len(evt.Flags) != 1 || evt.Flags[0] != "settings_sync_enabled" {
+		t.Fatalf("got %+v", evt)
 	}
 }

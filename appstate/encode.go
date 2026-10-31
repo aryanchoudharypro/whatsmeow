@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -506,6 +507,29 @@ func BuildDisableLinkPreviews(disabled bool) PatchInfo {
 					IsPreviewsDisabled: &disabled,
 				},
 			},
+		}},
+	}
+}
+
+// SettingsSyncAppTarget is the target of an app-wide settings_sync
+// mutation; a per-chat one names the chat's JID instead.
+const SettingsSyncAppTarget = "app"
+
+// BuildSettingsSync builds an app state patch sharing one desktop setting
+// with WhatsApp Web and the desktop apps (WAWebSettingsSync.getMutation).
+// value must set only the field key names. WhatsApp for Windows writes the
+// HYBRID platform and WA Web the WEB one. An empty target means
+// SettingsSyncAppTarget.
+func BuildSettingsSync(platform waSyncAction.SettingsSyncAction_SettingPlatform, key waSyncAction.SettingsSyncAction_SettingKey, target string, value *waSyncAction.SettingsSyncAction) PatchInfo {
+	if target == "" {
+		target = SettingsSyncAppTarget
+	}
+	return PatchInfo{
+		Type: WAPatchRegularLow,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexSettingsSync, strconv.Itoa(int(platform)), strconv.Itoa(int(key)), target},
+			Version: 1,
+			Value:   &waSyncAction.SyncActionValue{SettingsSyncAction: value},
 		}},
 	}
 }

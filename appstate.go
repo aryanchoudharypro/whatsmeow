@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -363,6 +364,37 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			eventToDispatch = &events.Favorites{
 				Timestamp:    ts,
 				Action:       act,
+				FromFullSync: fullSync,
+			}
+		}
+	case appstate.IndexSettingsSync:
+		// The index is ["settings_sync", platform, key, target], each a string:
+		// the platform and key are SettingsSyncAction enum numbers and the
+		// target is "app" or a chat JID (WAWebSettingsSync).
+		if len(mutation.Index) != 4 {
+			cli.Log.Warnf("Skipping settings_sync mutation with a %d-part index", len(mutation.Index))
+			return
+		}
+		platform, err1 := strconv.Atoi(mutation.Index[1])
+		key, err2 := strconv.Atoi(mutation.Index[2])
+		act := mutation.Action.GetSettingsSyncAction()
+		if err1 != nil || err2 != nil || act == nil {
+			cli.Log.Warnf("Skipping malformed settings_sync mutation %v", mutation.Index)
+			return
+		}
+		eventToDispatch = &events.SettingsSync{
+			Platform:     waSyncAction.SettingsSyncAction_SettingPlatform(platform),
+			Key:          waSyncAction.SettingsSyncAction_SettingKey(key),
+			Target:       mutation.Index[3],
+			Action:       act,
+			Timestamp:    ts,
+			FromFullSync: fullSync,
+		}
+	case appstate.IndexPrimaryFeature:
+		if act := mutation.Action.GetPrimaryFeature(); act != nil {
+			eventToDispatch = &events.PrimaryFeatures{
+				Flags:        act.GetFlags(),
+				Timestamp:    ts,
 				FromFullSync: fullSync,
 			}
 		}

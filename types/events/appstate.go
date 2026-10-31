@@ -102,6 +102,29 @@ type DisableLinkPreviews struct {
 	FromFullSync bool      // Whether the action is emitted because of a fullSync.
 }
 
+// SettingsSync is emitted when a setting WhatsApp Web and the desktop apps
+// share between themselves (WAWebSettingsSync, the settings_sync_enabled
+// feature) changes on another device. Only the field Key names is set in
+// Action. Platform says which kind of app it's for: WA Web applies WEB ones,
+// and WhatsApp for Windows applies WEB and HYBRID ones.
+type SettingsSync struct {
+	Platform     waSyncAction.SettingsSyncAction_SettingPlatform
+	Key          waSyncAction.SettingsSyncAction_SettingKey
+	Target       string                           // appstate.SettingsSyncAppTarget for an app-wide setting, or a chat JID.
+	Action       *waSyncAction.SettingsSyncAction // The new value.
+	Timestamp    time.Time                        // The time when the modification happened.
+	FromFullSync bool                             // Whether the action is emitted because of a fullSync.
+}
+
+// PrimaryFeatures is emitted when the phone syncs the list of features it
+// has turned on for its linked devices (WAWebPrimaryFeatureSync), such as
+// "settings_sync_enabled". Each event replaces the whole list.
+type PrimaryFeatures struct {
+	Flags        []string
+	Timestamp    time.Time // The time when the modification happened.
+	FromFullSync bool      // Whether the action is emitted because of a fullSync.
+}
+
 // PushName is emitted when a message is received with a different push name than the previous value cached for the same user.
 type PushName struct {
 	JID         types.JID // The user whose push name changed.

@@ -8,8 +8,8 @@ import (
 )
 
 func TestParseBlocklistKeepsPhoneNumberAndActive(t *testing.T) {
-	lid := types.NewJID("108701327343799", types.HiddenUserServer)
-	oldLID := types.NewJID("1099645911040", types.HiddenUserServer)
+	lid := types.NewJID("100000000000011", types.HiddenUserServer)
+	oldLID := types.NewJID("100000000000012", types.HiddenUserServer)
 	pn := types.NewJID("919800000001", types.DefaultUserServer)
 	node := &waBinary.Node{
 		Tag:   "list",

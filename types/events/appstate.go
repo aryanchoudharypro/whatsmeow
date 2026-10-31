@@ -79,7 +79,8 @@ type DeleteIndividualCallLog struct {
 // QuickReply is emitted when a quick reply (a saved shortcut and its canned
 // message) is added, edited or deleted from another device.
 type QuickReply struct {
-	Shortcut     string                         // The shortcut the quick reply is keyed by, from the mutation index.
+	ID           string                         // The quick reply's id, from the mutation index. Edits keep it.
+	Shortcut     string                         // The shortcut typed after "/", from the action (empty on a delete).
 	Timestamp    time.Time                      // The time when the modification happened.
 	Action       *waSyncAction.QuickReplyAction // The new quick reply. Check Action.GetDeleted() for a removal.
 	FromFullSync bool                           // Whether the action is emitted because of a fullSync.

@@ -344,14 +344,15 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 			FromFullSync: fullSync,
 		}
 	case appstate.IndexQuickReply:
-		// The shortcut is the index's second part, and it is what identifies the
-		// quick reply: the action itself repeats it only when it is being set.
-		shortcut := ""
+		// The index's second part is an opaque id (WAWebQuickRepliesSync keys
+		// by id), and the shortcut rides in the action. A delete clears it.
+		id := ""
 		if len(mutation.Index) > 1 {
-			shortcut = mutation.Index[1]
+			id = mutation.Index[1]
 		}
 		eventToDispatch = &events.QuickReply{
-			Shortcut:     shortcut,
+			ID:           id,
+			Shortcut:     mutation.Action.GetQuickReplyAction().GetShortcut(),
 			Timestamp:    ts,
 			Action:       mutation.Action.GetQuickReplyAction(),
 			FromFullSync: fullSync,

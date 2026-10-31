@@ -602,3 +602,51 @@ func BuildRemoveContact(jids ...types.JID) PatchInfo {
 	}
 	return PatchInfo{Type: WAPatchCriticalUnblockLow, Mutations: mutations}
 }
+
+// BuildQuickReply builds an app state patch adding or editing a business
+// quick reply (WAWebQuickRepliesSync.getQuickReplyAddOrEditMutation). The
+// index's second part is an opaque id, not the shortcut: editing a reply's
+// shortcut keeps its id. shortcut is what's typed after "/" and message the
+// text it expands to; WA Web drops a mutation missing either. count is the
+// usage tally (0 for a new reply). WA Web always leaves associatedLabelIds
+// empty, so this does too.
+func BuildQuickReply(id, shortcut, message string, keywords []string, count int32) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegular,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexQuickReply, id},
+			Version: 2,
+			Value: &waSyncAction.SyncActionValue{
+				QuickReplyAction: &waSyncAction.QuickReplyAction{
+					Shortcut: proto.String(shortcut),
+					Message:  proto.String(message),
+					Keywords: keywords,
+					Count:    proto.Int32(count),
+					Deleted:  proto.Bool(false),
+				},
+			},
+		}},
+	}
+}
+
+// BuildDeleteQuickReply builds an app state patch deleting a quick reply.
+// As in WA Web's getQuickReplyDeleteMutation it is a SET with deleted on and
+// the fields cleared, not a REMOVE: linked devices only look at deleted on a
+// SET, so a REMOVE would never take it off their lists.
+func BuildDeleteQuickReply(id string) PatchInfo {
+	return PatchInfo{
+		Type: WAPatchRegular,
+		Mutations: []MutationInfo{{
+			Index:   []string{IndexQuickReply, id},
+			Version: 2,
+			Value: &waSyncAction.SyncActionValue{
+				QuickReplyAction: &waSyncAction.QuickReplyAction{
+					Shortcut: proto.String(""),
+					Message:  proto.String(""),
+					Count:    proto.Int32(0),
+					Deleted:  proto.Bool(true),
+				},
+			},
+		}},
+	}
+}

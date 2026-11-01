@@ -649,11 +649,13 @@ func (ClientPayload_WebInfo_WebSubPlatform) EnumDescriptor() ([]byte, []int) {
 type ClientPayload_UserAgent_DeviceType int32
 
 const (
-	ClientPayload_UserAgent_PHONE    ClientPayload_UserAgent_DeviceType = 0
-	ClientPayload_UserAgent_TABLET   ClientPayload_UserAgent_DeviceType = 1
-	ClientPayload_UserAgent_DESKTOP  ClientPayload_UserAgent_DeviceType = 2
-	ClientPayload_UserAgent_WEARABLE ClientPayload_UserAgent_DeviceType = 3
-	ClientPayload_UserAgent_VR       ClientPayload_UserAgent_DeviceType = 4
+	ClientPayload_UserAgent_PHONE         ClientPayload_UserAgent_DeviceType = 0
+	ClientPayload_UserAgent_TABLET        ClientPayload_UserAgent_DeviceType = 1
+	ClientPayload_UserAgent_DESKTOP       ClientPayload_UserAgent_DeviceType = 2
+	ClientPayload_UserAgent_WEARABLE      ClientPayload_UserAgent_DeviceType = 3
+	ClientPayload_UserAgent_VR            ClientPayload_UserAgent_DeviceType = 4
+	ClientPayload_UserAgent_SMART_DISPLAY ClientPayload_UserAgent_DeviceType = 5
+	ClientPayload_UserAgent_SMART_SPEAKER ClientPayload_UserAgent_DeviceType = 6
 )
 
 // Enum value maps for ClientPayload_UserAgent_DeviceType.
@@ -664,13 +666,17 @@ var (
 		2: "DESKTOP",
 		3: "WEARABLE",
 		4: "VR",
+		5: "SMART_DISPLAY",
+		6: "SMART_SPEAKER",
 	}
 	ClientPayload_UserAgent_DeviceType_value = map[string]int32{
-		"PHONE":    0,
-		"TABLET":   1,
-		"DESKTOP":  2,
-		"WEARABLE": 3,
-		"VR":       4,
+		"PHONE":         0,
+		"TABLET":        1,
+		"DESKTOP":       2,
+		"WEARABLE":      3,
+		"VR":            4,
+		"SMART_DISPLAY": 5,
+		"SMART_SPEAKER": 6,
 	}
 )
 
@@ -2392,7 +2398,7 @@ const file_waWa6_WAWebProtobufsWa6_proto_rawDesc = "" +
 	"\x05IKKEM\x10\x05\x12\f\n" +
 	"\bIKKEM_FS\x10\x06\x12\v\n" +
 	"\aXXKEM_2\x10\a\x12\v\n" +
-	"\aIKKEM_2\x10\b\"\xc1.\n" +
+	"\aIKKEM_2\x10\b\"\xe7.\n" +
 	"\rClientPayload\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\x04R\busername\x12\x18\n" +
 	"\apassive\x18\x03 \x01(\bR\apassive\x12H\n" +
@@ -2478,7 +2484,7 @@ const file_waWa6_WAWebProtobufsWa6_proto_rawDesc = "" +
 	"\x06DARWIN\x10\x03\x12\t\n" +
 	"\x05WIN32\x10\x04\x12\x0e\n" +
 	"\n" +
-	"WIN_HYBRID\x10\x05\x1a\xd9\x0e\n" +
+	"WIN_HYBRID\x10\x05\x1a\xff\x0e\n" +
 	"\tUserAgent\x12O\n" +
 	"\bplatform\x18\x01 \x01(\x0e23.WAWebProtobufsWa6.ClientPayload.UserAgent.PlatformR\bplatform\x12U\n" +
 	"\n" +
@@ -2510,7 +2516,7 @@ const file_waWa6_WAWebProtobufsWa6_proto_rawDesc = "" +
 	"\n" +
 	"quaternary\x18\x04 \x01(\rR\n" +
 	"quaternary\x12\x18\n" +
-	"\aquinary\x18\x05 \x01(\rR\aquinary\"F\n" +
+	"\aquinary\x18\x05 \x01(\rR\aquinary\"l\n" +
 	"\n" +
 	"DeviceType\x12\t\n" +
 	"\x05PHONE\x10\x00\x12\n" +
@@ -2518,7 +2524,9 @@ const file_waWa6_WAWebProtobufsWa6_proto_rawDesc = "" +
 	"\x06TABLET\x10\x01\x12\v\n" +
 	"\aDESKTOP\x10\x02\x12\f\n" +
 	"\bWEARABLE\x10\x03\x12\x06\n" +
-	"\x02VR\x10\x04\"N\n" +
+	"\x02VR\x10\x04\x12\x11\n" +
+	"\rSMART_DISPLAY\x10\x05\x12\x11\n" +
+	"\rSMART_SPEAKER\x10\x06\"N\n" +
 	"\x13DistributionChannel\x12\f\n" +
 	"\bAPPSTORE\x10\x00\x12\v\n" +
 	"\aWEBSITE\x10\x01\x12\x0e\n" +

@@ -355,6 +355,8 @@ const (
 	WebMessageInfo_META_AI_THREAD_CREATED                                   WebMessageInfo_StubType = 284
 	WebMessageInfo_META_AI_CONNECTOR_LINKED                                 WebMessageInfo_StubType = 285
 	WebMessageInfo_SPLIT_PAYMENT_MARKED_AS_PAID                             WebMessageInfo_StubType = 289
+	WebMessageInfo_POLL_OPTIONS_REMOVED                                     WebMessageInfo_StubType = 290
+	WebMessageInfo_POLL_ADDED_OPTION_REMOVED                                WebMessageInfo_StubType = 291
 )
 
 // Enum value maps for WebMessageInfo_StubType.
@@ -625,6 +627,8 @@ var (
 		284: "META_AI_THREAD_CREATED",
 		285: "META_AI_CONNECTOR_LINKED",
 		289: "SPLIT_PAYMENT_MARKED_AS_PAID",
+		290: "POLL_OPTIONS_REMOVED",
+		291: "POLL_ADDED_OPTION_REMOVED",
 	}
 	WebMessageInfo_StubType_value = map[string]int32{
 		"UNKNOWN":                                                  0,
@@ -892,6 +896,8 @@ var (
 		"META_AI_THREAD_CREATED":                                   284,
 		"META_AI_CONNECTOR_LINKED":                                 285,
 		"SPLIT_PAYMENT_MARKED_AS_PAID":                             289,
+		"POLL_OPTIONS_REMOVED":                                     290,
+		"POLL_ADDED_OPTION_REMOVED":                                291,
 	}
 )
 
@@ -4393,7 +4399,7 @@ var File_waWeb_WAWebProtobufsWeb_proto protoreflect.FileDescriptor
 
 const file_waWeb_WAWebProtobufsWeb_proto_rawDesc = "" +
 	"\n" +
-	"\x1dwaWeb/WAWebProtobufsWeb.proto\x12\x11WAWebProtobufsWeb\x1a\x1dwaE2E/WAWebProtobufsE2E.proto\x1a\x17waCommon/WACommon.proto\"\xa9i\n" +
+	"\x1dwaWeb/WAWebProtobufsWeb.proto\x12\x11WAWebProtobufsWeb\x1a\x1dwaE2E/WAWebProtobufsE2E.proto\x1a\x17waCommon/WACommon.proto\"\xe4i\n" +
 	"\x0eWebMessageInfo\x12&\n" +
 	"\x03key\x18\x01 \x02(\v2\x14.WACommon.MessageKeyR\x03key\x124\n" +
 	"\amessage\x18\x02 \x01(\v2\x1a.WAWebProtobufsE2E.MessageR\amessage\x12*\n" +
@@ -4479,7 +4485,7 @@ const file_waWeb_WAWebProtobufsWeb_proto_rawDesc = "" +
 	"\x02FB\x10\x02\x12\a\n" +
 	"\x03BSP\x10\x01\x12\x0e\n" +
 	"\n" +
-	"BSP_AND_FB\x10\x03\"\x88F\n" +
+	"BSP_AND_FB\x10\x03\"\xc3F\n" +
 	"\bStubType\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\n" +
 	"\n" +
@@ -4749,7 +4755,9 @@ const file_waWeb_WAWebProtobufsWeb_proto_rawDesc = "" +
 	"\x1fCHAT_WITH_BUSINESS_IN_DIRECTORY\x10\x9b\x02\x12\x1b\n" +
 	"\x16META_AI_THREAD_CREATED\x10\x9c\x02\x12\x1d\n" +
 	"\x18META_AI_CONNECTOR_LINKED\x10\x9d\x02\x12!\n" +
-	"\x1cSPLIT_PAYMENT_MARKED_AS_PAID\x10\xa1\x02\"X\n" +
+	"\x1cSPLIT_PAYMENT_MARKED_AS_PAID\x10\xa1\x02\x12\x19\n" +
+	"\x14POLL_OPTIONS_REMOVED\x10\xa2\x02\x12\x1e\n" +
+	"\x19POLL_ADDED_OPTION_REMOVED\x10\xa3\x02\"X\n" +
 	"\x06Status\x12\t\n" +
 	"\x05ERROR\x10\x00\x12\v\n" +
 	"\aPENDING\x10\x01\x12\x0e\n" +

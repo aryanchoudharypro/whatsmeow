@@ -326,3 +326,21 @@ func (cli *Client) GetDefaultDisappearingTimer(ctx context.Context) (time.Durati
 	}
 	return 0, nil
 }
+
+// SetReadReceiptsPrivacy updates the cached read receipts privacy setting
+// without asking the server. WA Web does this with the readreceipts attribute
+// the server puts on the ack of a read receipt, so a change made on another
+// device takes effect before the next privacy fetch.
+func (cli *Client) SetReadReceiptsPrivacy(value types.PrivacySetting) {
+	if cli == nil || value == "" {
+		return
+	}
+	if val := cli.privacySettingsCache.Load(); val != nil {
+		settings := *val.(*types.PrivacySettings)
+		if settings.ReadReceipts == value {
+			return
+		}
+		settings.ReadReceipts = value
+		cli.privacySettingsCache.Store(&settings)
+	}
+}

@@ -109,6 +109,9 @@ type MessageInfo struct {
 	Multicast bool
 	MediaType string
 	Edit      EditAttribute
+	// ServerStoreTime is the server's store time in microseconds (the
+	// message's sts attribute), or 0 when it wasn't sent.
+	ServerStoreTime int64
 
 	MsgBotInfo  MsgBotInfo
 	MsgMetaInfo MsgMetaInfo

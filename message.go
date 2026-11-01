@@ -248,6 +248,7 @@ func (cli *Client) parseMessageInfo(node *waBinary.Node) (*types.MessageInfo, er
 	info.Category = ag.OptionalString("category")
 	info.Type = ag.OptionalString("type")
 	info.Edit = types.EditAttribute(ag.OptionalString("edit"))
+	info.ServerStoreTime, _ = ag.GetInt64("sts", false)
 	if err = ag.Error(); err != nil {
 		return nil, err
 	}

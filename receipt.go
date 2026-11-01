@@ -9,6 +9,7 @@ package whatsmeow
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -195,14 +196,37 @@ func (cli *Client) sendAck(ctx context.Context, node *waBinary.Node, error int) 
 // To mark a voice message as played, specify types.ReceiptTypePlayed as the last parameter.
 // Providing more than one receipt type will panic: the parameter is only a vararg for backwards compatibility.
 func (cli *Client) MarkRead(ctx context.Context, ids []types.MessageID, timestamp time.Time, chat, sender types.JID, receiptTypeExtra ...types.ReceiptType) error {
-	if len(ids) == 0 {
-		return fmt.Errorf("no message IDs specified")
-	}
 	receiptType := types.ReceiptTypeRead
 	if len(receiptTypeExtra) == 1 {
 		receiptType = receiptTypeExtra[0]
 	} else if len(receiptTypeExtra) > 1 {
 		panic(fmt.Errorf("too many receipt types specified"))
+	}
+	return cli.SendReadReceipt(ctx, ReadReceipt{IDs: ids, Timestamp: timestamp, Chat: chat, Sender: sender, Type: receiptType})
+}
+
+// ReadReceipt describes a read (or played) receipt for SendReadReceipt.
+type ReadReceipt struct {
+	IDs       []types.MessageID
+	Timestamp time.Time
+	Chat      types.JID
+	Sender    types.JID
+	// Type defaults to types.ReceiptTypeRead.
+	Type types.ReceiptType
+	// MaxServerStoreTime is the newest server store time (MessageInfo.ServerStoreTime)
+	// among the messages, sent as the sts attribute like WA Web does. 0 leaves it out.
+	MaxServerStoreTime int64
+}
+
+// SendReadReceipt is MarkRead with the extra fields WA Web puts on a read receipt.
+func (cli *Client) SendReadReceipt(ctx context.Context, r ReadReceipt) error {
+	ids, timestamp, chat, sender := r.IDs, r.Timestamp, r.Chat, r.Sender
+	if len(ids) == 0 {
+		return fmt.Errorf("no message IDs specified")
+	}
+	receiptType := r.Type
+	if receiptType == "" {
+		receiptType = types.ReceiptTypeRead
 	}
 	node := waBinary.Node{
 		Tag: "receipt",
@@ -224,6 +248,9 @@ func (cli *Client) MarkRead(ctx context.Context, ids []types.MessageID, timestam
 	}
 	if !sender.IsEmpty() && chat.Server != types.DefaultUserServer && chat.Server != types.HiddenUserServer && chat.Server != types.MessengerServer {
 		node.Attrs["participant"] = sender.ToNonAD()
+	}
+	if r.MaxServerStoreTime > 0 {
+		node.Attrs["sts"] = strconv.FormatInt(r.MaxServerStoreTime, 10)
 	}
 	if len(ids) > 1 {
 		children := make([]waBinary.Node, len(ids)-1)

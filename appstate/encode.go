@@ -284,7 +284,8 @@ func newDeleteMessageForMeMutation(targetJID, senderJID string, messageID types.
 		Value: &waSyncAction.SyncActionValue{
 			DeleteMessageForMeAction: &waSyncAction.DeleteMessageForMeAction{
 				DeleteMedia:      proto.Bool(deleteMedia),
-				MessageTimestamp: proto.Int64(messageTimestamp.UnixMilli()),
+				// Seconds, like WA Web's msg.t (WAWebDeleteMessageForMeSync).
+				MessageTimestamp: proto.Int64(messageTimestamp.Unix()),
 			},
 		},
 	}

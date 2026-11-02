@@ -26,12 +26,15 @@ type historySyncRequest struct {
 	// owed (see Client.AckHistorySyncAfterDispatch), empty if it was already
 	// sent on arrival.
 	receiptID types.MessageID
+	// msgID is the notification's message ID, for chunk retry requests.
+	msgID types.MessageID
 }
 
 // historySyncDownload is one notification's blob being fetched and parsed.
 type historySyncDownload struct {
 	notif     *waE2E.HistorySyncNotification
 	receiptID types.MessageID
+	msgID     types.MessageID
 	done      chan struct{}
 	blob      *waHistorySync.HistorySync
 	convs     *events.HistorySyncConversations
@@ -48,7 +51,7 @@ func historySyncHasBlob(notif *waE2E.HistorySyncNotification) bool {
 
 func (cli *Client) startHistorySyncDownload(ctx context.Context, req historySyncRequest) *historySyncDownload {
 	notif := req.notif
-	dl := &historySyncDownload{notif: notif, receiptID: req.receiptID, done: make(chan struct{})}
+	dl := &historySyncDownload{notif: notif, receiptID: req.receiptID, msgID: req.msgID, done: make(chan struct{})}
 	if !historySyncHasBlob(notif) {
 		dl.statusOnly = true
 		close(dl.done)
@@ -112,6 +115,7 @@ func (cli *Client) finishHistorySyncDownload(ctx context.Context, dl *historySyn
 		} else {
 			cli.Log.Errorf("Failed to download history sync: %v", dl.err)
 		}
+		go cli.retryFailedHistorySyncChunk(context.WithoutCancel(ctx), dl)
 		return
 	}
 	if cli.dispatchEvent(&events.HistorySync{Data: dl.blob, Notification: dl.notif, Conversations: dl.convs}) && dl.receiptID != "" {

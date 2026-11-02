@@ -135,6 +135,13 @@ type Client struct {
 	// hold tens of thousands of messages, which decoded all at once took
 	// over 100 MB of memory.
 	StreamHistorySyncConversations bool
+	// RetryFailedHistorySyncChunks asks the primary phone to send a history
+	// sync chunk again (HISTORY_SYNC_CHUNK_RETRY) when its download fails,
+	// up to three times per chunk, instead of losing that part of the
+	// history. Answers come as events.HistorySyncChunkRetryResult.
+	RetryFailedHistorySyncChunks bool
+	historyChunkRetries          map[string]int
+	historyChunkRetriesLock      sync.Mutex
 
 	uploadPreKeysLock sync.Mutex
 	lastPreKeyUpload  time.Time
@@ -1161,15 +1168,24 @@ func (cli *Client) sendNode(ctx context.Context, node waBinary.Node) error {
 }
 
 func (cli *Client) dispatchEvent(evt any) (handlerFailed bool) {
+	// The handler list is copied and the lock let go before any handler
+	// runs. Handlers can take a long time (an app saving a whole history
+	// sync chunk before its receipt goes out), and holding the read lock
+	// through that let one AddEventHandler call - a writer waiting on it -
+	// block every other dispatch, freezing all events until the slow
+	// handler returned. It also makes RemoveEventHandler safe to call from a
+	// handler. A handler added or removed meanwhile may miss or still see
+	// this one event.
 	cli.eventHandlersLock.RLock()
+	handlers := slices.Clone(cli.eventHandlers)
+	cli.eventHandlersLock.RUnlock()
 	defer func() {
-		cli.eventHandlersLock.RUnlock()
 		err := recover()
 		if err != nil {
 			cli.Log.Errorf("Event handler panicked while handling a %T: %v\n%s", evt, err, debug.Stack())
 		}
 	}()
-	for _, handler := range cli.eventHandlers {
+	for _, handler := range handlers {
 		if !handler.fn(evt) {
 			return true
 		}

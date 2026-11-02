@@ -693,6 +693,27 @@ type OfflineSyncPreview struct {
 	Receipts       int
 }
 
+// HistorySyncChunkRetryResult is the primary phone's answer to a history sync chunk retry
+// request (see whatsmeow.BuildHistorySyncChunkRetryRequest). A chunk the phone can send again
+// simply arrives as a new history sync; the codes say why it can't.
+type HistorySyncChunkRetryResult struct {
+	RequestID  types.MessageID
+	SyncType   waE2E.HistorySyncType
+	ChunkOrder uint32
+	Code       waE2E.PeerDataOperationRequestResponseMessage_PeerDataOperationResult_HistorySyncChunkRetryResponseCode
+	// HasCode is false when the phone sent no code at all.
+	HasCode    bool
+	CanRecover bool
+}
+
+// FullHistorySyncOnDemandResult is the primary phone's answer to a full history sync on demand
+// request (see whatsmeow.BuildFullHistorySyncOnDemandRequest). REQUEST_SUCCESS means the history
+// follows as ordinary history sync events.
+type FullHistorySyncOnDemandResult struct {
+	RequestID string
+	Code      waE2E.PeerDataOperationRequestResponseMessage_PeerDataOperationResult_FullHistorySyncOnDemandResponseCode
+}
+
 // OfflineSyncProgress is emitted while the missed events announced by OfflineSyncPreview are
 // being delivered, each time the whole-number percentage of them received goes up (WA Web's
 // "Downloading messages: N%" loading screen, from getOfflineDeliveryProgress).

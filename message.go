@@ -1031,7 +1031,7 @@ func (cli *Client) handleProtocolMessage(ctx context.Context, info *types.Messag
 	if protoMsg.GetHistorySyncNotification() != nil {
 		receiptDeferred := false
 		if !cli.ManualHistorySyncDownload {
-			req := historySyncRequest{notif: protoMsg.HistorySyncNotification}
+			req := historySyncRequest{notif: protoMsg.HistorySyncNotification, msgID: info.ID}
 			// Statuses are acknowledged on arrival even then: WA Web sends the
 			// receipt for an INITIAL_STATUS_V3 chunk before storing it (and for
 			// every other chunk after), so a status blob that has expired
@@ -1068,6 +1068,10 @@ func (cli *Client) handleProtocolMessage(ctx context.Context, info *types.Messag
 			ok = cli.handlePlaceholderResendResponse(peerResp) && ok
 		case waE2E.PeerDataOperationRequestType_COMPANION_SYNCD_SNAPSHOT_FATAL_RECOVERY:
 			ok = cli.handleAppStateRecovery(ctx, peerResp.GetStanzaID(), peerResp.GetPeerDataOperationResult()) && ok
+		case waE2E.PeerDataOperationRequestType_HISTORY_SYNC_CHUNK_RETRY:
+			cli.handleHistorySyncChunkRetryResponse(peerResp)
+		case waE2E.PeerDataOperationRequestType_FULL_HISTORY_SYNC_ON_DEMAND:
+			cli.handleFullHistorySyncOnDemandResponse(peerResp)
 		}
 	}
 

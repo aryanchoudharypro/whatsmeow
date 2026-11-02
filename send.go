@@ -1175,6 +1175,18 @@ func (cli *Client) preparePeerMessageNode(
 	} else if message.GetProtocolMessage().GetPeerDataOperationRequestMessage().GetPeerDataOperationRequestType() == waE2E.PeerDataOperationRequestType_HISTORY_SYNC_ON_DEMAND {
 		attrs["push_priority"] = "high_force"
 		attrs["privacy_sensitive"] = "1"
+	} else if pdo := message.GetProtocolMessage().GetPeerDataOperationRequestMessage(); pdo != nil {
+		// whatsapp-rust's peer_message_options_from_message (from WA Web's
+		// WAWebSendNonMessageDataRequest): these three at "high_force", every
+		// other peer data operation request at "high".
+		switch pdo.GetPeerDataOperationRequestType() {
+		case waE2E.PeerDataOperationRequestType_GENERATE_LINK_PREVIEW,
+			waE2E.PeerDataOperationRequestType_PLACEHOLDER_MESSAGE_RESEND,
+			waE2E.PeerDataOperationRequestType_COMPANION_CANONICAL_USER_NONCE_FETCH:
+			attrs["push_priority"] = "high_force"
+		default:
+			attrs["push_priority"] = "high"
+		}
 	}
 	start := time.Now()
 	plaintext, err := proto.Marshal(message)

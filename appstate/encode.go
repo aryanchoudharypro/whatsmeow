@@ -248,16 +248,27 @@ func newStarMutation(targetJID, senderJID string, messageID types.MessageID, fro
 	}
 }
 
+// messageKeyParticipant returns the participant part of a message-scoped
+// syncd index, as WA Web's WAWebSyncdActionUtils.buildMessageKey builds it:
+// the author (without device) for other people's messages in groups and
+// broadcasts, and "0" for our own messages and for every message in a 1:1 chat.
+func messageKeyParticipant(chat, sender types.JID, fromMe bool) string {
+	if fromMe || sender.IsEmpty() {
+		return "0"
+	}
+	if chat.Server != types.GroupServer && chat.Server != types.BroadcastServer {
+		return "0"
+	}
+	return sender.ToNonAD().String()
+}
+
 // BuildStar builds an app state patch for starring or unstarring a message.
 func BuildStar(target, sender types.JID, messageID types.MessageID, fromMe, starred bool) PatchInfo {
 	isFromMe := "0"
 	if fromMe {
 		isFromMe = "1"
 	}
-	targetJID, senderJID := target.String(), sender.String()
-	if target.User == sender.User {
-		senderJID = "0"
-	}
+	targetJID, senderJID := target.String(), messageKeyParticipant(target, sender, fromMe)
 	return PatchInfo{
 		Type: WAPatchRegularHigh,
 		Mutations: []MutationInfo{
@@ -269,7 +280,7 @@ func BuildStar(target, sender types.JID, messageID types.MessageID, fromMe, star
 func newDeleteMessageForMeMutation(targetJID, senderJID string, messageID types.MessageID, fromMe string, deleteMedia bool, messageTimestamp time.Time) MutationInfo {
 	return MutationInfo{
 		Index:   []string{IndexDeleteMessageForMe, targetJID, messageID, fromMe, senderJID},
-		Version: 2,
+		Version: 3,
 		Value: &waSyncAction.SyncActionValue{
 			DeleteMessageForMeAction: &waSyncAction.DeleteMessageForMeAction{
 				DeleteMedia:      proto.Bool(deleteMedia),
@@ -292,10 +303,7 @@ func BuildDeleteMessageForMe(target, sender types.JID, messageID types.MessageID
 	if fromMe {
 		isFromMe = "1"
 	}
-	targetJID, senderJID := target.String(), sender.String()
-	if target.User == sender.User {
-		senderJID = "0"
-	}
+	targetJID, senderJID := target.String(), messageKeyParticipant(target, sender, fromMe)
 	return PatchInfo{
 		Type: WAPatchRegularHigh,
 		Mutations: []MutationInfo{

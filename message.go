@@ -339,7 +339,11 @@ func (cli *Client) decryptMessages(ctx context.Context, info *types.MessageInfo,
 		uType := events.UnavailableType(unavailableNode.AttrGetter().String("type"))
 		cli.Log.Warnf("Unavailable message %s from %s (type: %q)", info.ID, info.SourceString(), uType)
 		cli.backgroundIfAsyncAck(func() {
-			cli.immediateRequestMessageFromPhone(ctx, info)
+			// WA Web never asks the phone to resend view once (or hosted) fanouts:
+			// they are only meant to be opened on the phone.
+			if uType != events.UnavailableTypeViewOnce && unavailableNode.AttrGetter().OptionalString("hosted") != "true" {
+				cli.immediateRequestMessageFromPhone(ctx, info)
+			}
 			cli.sendAck(ctx, node, 0)
 		})
 		cli.dispatchEvent(&events.UndecryptableMessage{Info: *info, IsUnavailable: true, UnavailableType: uType})

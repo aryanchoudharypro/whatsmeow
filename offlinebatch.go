@@ -43,6 +43,8 @@ type offlineBatchRun struct {
 	activity  atomic.Uint64
 	total     int64
 	processed atomic.Int64
+	// percent is the last progress percentage dispatched for this run.
+	percent atomic.Int64
 }
 
 // current returns the armed run, or nil when no drain is going on.
@@ -96,7 +98,9 @@ func (cli *Client) noteOfflineStanza(ctx context.Context) {
 		return
 	}
 	run.activity.Add(1)
-	pending := run.total - run.processed.Add(1)
+	processed := run.processed.Add(1)
+	cli.reportOfflineProgress(run, processed)
+	pending := run.total - processed
 	if pending <= 0 {
 		// Nothing more is owed; the <ib><offline> end marker completes it.
 		return
@@ -120,6 +124,27 @@ func (cli *Client) noteOfflineStanza(ctx context.Context) {
 		cli.sendOfflineBatch(ctx)
 	}()
 }
+
+// reportOfflineProgress dispatches OfflineSyncProgress when the percentage of
+// the announced backlog received goes up, so a big drain gives at most about
+// a hundred events instead of one per stanza.
+func (cli *Client) reportOfflineProgress(run *offlineBatchRun, processed int64) {
+	if run.total <= 0 {
+		return
+	}
+	pct := min(processed*100/run.total, 100)
+	for {
+		last := run.percent.Load()
+		if pct <= last {
+			return
+		}
+		if run.percent.CompareAndSwap(last, pct) {
+			break
+		}
+	}
+	cli.dispatchEvent(&events.OfflineSyncProgress{Processed: int(processed), Total: int(run.total), Percent: int(pct)})
+}
+
 func (cli *Client) sendOfflineBatch(ctx context.Context) {
 	// Acknowledge what the previous batch delivered before asking for more.
 	cli.flushOfflineReceipts(ctx)

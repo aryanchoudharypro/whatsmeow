@@ -693,6 +693,15 @@ type OfflineSyncPreview struct {
 	Receipts       int
 }
 
+// OfflineSyncProgress is emitted while the missed events announced by OfflineSyncPreview are
+// being delivered, each time the whole-number percentage of them received goes up (WA Web's
+// "Downloading messages: N%" loading screen, from getOfflineDeliveryProgress).
+type OfflineSyncProgress struct {
+	Processed int
+	Total     int
+	Percent   int
+}
+
 // OfflineSyncCompleted is emitted after the server has finished sending missed events.
 type OfflineSyncCompleted struct {
 	Count int

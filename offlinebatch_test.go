@@ -7,6 +7,7 @@ import (
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/store"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
@@ -111,5 +112,25 @@ func TestOfflineBatchOldRunCannotTouchItsReplacement(t *testing.T) {
 	}
 	if cur.activity.Load() != 0 || cur.processed.Load() != 0 {
 		t.Fatal("the old run's continuation touched the new run")
+	}
+}
+
+func TestOfflineSyncProgressEvents(t *testing.T) {
+	cli := NewClient(&store.Device{}, waLog.Noop)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var got []int
+	cli.AddEventHandler(func(evt any) {
+		if p, ok := evt.(*events.OfflineSyncProgress); ok {
+			got = append(got, p.Percent)
+		}
+	})
+	cli.startOfflineBatches(ctx, 400)
+	for range 400 {
+		cli.noteOfflineStanza(ctx)
+	}
+	cli.stopOfflineBatches()
+	if len(got) != 100 || got[0] != 1 || got[99] != 100 {
+		t.Fatalf("got %d events, first %v", len(got), got[:min(len(got), 3)])
 	}
 }

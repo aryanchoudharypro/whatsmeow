@@ -321,6 +321,10 @@ func (cli *Client) DownloadMediaWithPath(
 		data, err = cli.downloadAndDecrypt(withFallbackMediaHost(ctx, i < len(mediaConn.Hosts)-1), mediaURL, mediaKey, mediaType, encFileHash, fileHash)
 		if err == nil ||
 			errors.Is(err, ErrInvalidMediaSHA256) ||
+			// WA Web doesn't retry a file whose bytes don't match their
+			// hash (WAWebMmsClientIsErrorRetryable); another host serves
+			// the same object.
+			errors.Is(err, ErrInvalidMediaEncSHA256) ||
 			errors.Is(err, ErrMediaDownloadFailedWith403) ||
 			errors.Is(err, ErrMediaDownloadFailedWith404) ||
 			errors.Is(err, ErrMediaDownloadFailedWith410) ||

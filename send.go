@@ -230,6 +230,29 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	}
 	resp.ID = req.ID
 
+	// Meta AI can be a member of a group (an "open" bot group, or one with
+	// private processing). WA Web then stamps every message to the group
+	// with that bot (WAWebGenerateBotGroupMetadata) and counts it in the
+	// participant hash (WAWebPhashUtils.phashV2), but never sends it the
+	// group message itself.
+	var groupBot types.JID
+	if to.Server == types.GroupServer {
+		if cached, cacheErr := cli.getCachedGroupData(ctx, to); cacheErr == nil {
+			groupBot = groupMetaAIParticipant(cached.Members)
+		}
+	}
+	if !groupBot.IsEmpty() && carriesBotGroupMetadata(message) {
+		if message.MessageContextInfo == nil {
+			message.MessageContextInfo = &waE2E.MessageContextInfo{}
+		}
+		if message.MessageContextInfo.BotMetadata == nil {
+			message.MessageContextInfo.BotMetadata = &waAICommon.BotMetadata{}
+		}
+		message.MessageContextInfo.BotMetadata.BotGroupMetadata = &waAICommon.BotGroupMetadata{
+			ParticipantsMetadata: []*waAICommon.BotGroupParticipantMetadata{{BotFbid: proto.String(groupBot.User)}},
+		}
+	}
+
 	isInlineBotMode := false
 
 	if !req.InlineBotJID.IsEmpty() {
@@ -263,13 +286,16 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 
 	if isBotMode {
 		if message.MessageContextInfo.BotMetadata == nil {
+			message.MessageContextInfo.BotMetadata = &waAICommon.BotMetadata{}
+		}
+		// The persona belongs to the bot being talked to; Meta AI as a
+		// private-processing group member has its own, which we don't know.
+		if message.MessageContextInfo.BotMetadata.PersonaID == nil && req.InlineBotJID != types.TeeMetaAIJID {
 			personaID := "867051314767696$760019659443059"
 			if to == types.MuseJID {
 				personaID = "1807055946647697$1"
 			}
-			message.MessageContextInfo.BotMetadata = &waAICommon.BotMetadata{
-				PersonaID: new(personaID),
-			}
+			message.MessageContextInfo.BotMetadata.PersonaID = new(personaID)
 		}
 
 		if isInlineBotMode {
@@ -324,6 +350,10 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 				return
 			}
 			groupParticipants = cachedData.Members
+			if !groupBot.IsEmpty() {
+				groupParticipants = withoutMetaAIParticipants(groupParticipants)
+				extraParams.phashExtra = []types.JID{groupBot}
+			}
 			// TODO this is fairly hacky, is there a proper way to determine which identity the message is sent with?
 			if cachedData.AddressingMode == types.AddressingModeLID {
 				ownID = cli.getOwnLID()
@@ -831,6 +861,52 @@ type nodeExtraParams struct {
 	deviceFilter func(device types.JID, hasSession bool) bool
 	// encryptedFor, if set, receives the devices it was encrypted for.
 	encryptedFor *[]types.JID
+	// phashExtra is counted in a group's participant hash without being
+	// sent to (Meta AI as a group member).
+	phashExtra []types.JID
+}
+
+// groupMetaAIParticipant returns Meta AI if it's a member of the group, the
+// way WA Web's getSendGroupBotParticipant picks it: the open-group bot first,
+// then the private-processing one.
+func groupMetaAIParticipant(members []types.JID) types.JID {
+	var tee bool
+	for _, m := range members {
+		switch m.ToNonAD() {
+		case types.NewMetaAIJID:
+			return types.NewMetaAIJID
+		case types.TeeMetaAIJID:
+			tee = true
+		}
+	}
+	if tee {
+		return types.TeeMetaAIJID
+	}
+	return types.EmptyJID
+}
+
+func withoutMetaAIParticipants(members []types.JID) []types.JID {
+	out := make([]types.JID, 0, len(members))
+	for _, m := range members {
+		if nonAD := m.ToNonAD(); nonAD != types.NewMetaAIJID && nonAD != types.TeeMetaAIJID {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// carriesBotGroupMetadata reports whether WA Web would stamp this message
+// with the group's bot: messages people write and their edits, not
+// receipts-like protocol messages, reactions or poll votes.
+func carriesBotGroupMetadata(message *waE2E.Message) bool {
+	switch {
+	case message.GetEditedMessage() != nil:
+		return true
+	case message.ProtocolMessage != nil, message.ReactionMessage != nil, message.EncReactionMessage != nil,
+		message.PollUpdateMessage != nil, message.SenderKeyDistributionMessage != nil:
+		return false
+	}
+	return true
 }
 
 func (cli *Client) sendGroup(
@@ -887,7 +963,7 @@ func (cli *Client) sendGroup(
 		return "", nil, nil, err
 	}
 
-	phash := participantListHashV2(allDevices)
+	phash := participantListHashV2(append(allDevices, extraParams.phashExtra...))
 	node.Attrs["phash"] = phash
 	skMsg := waBinary.Node{
 		Tag:     "enc",

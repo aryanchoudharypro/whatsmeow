@@ -45,7 +45,10 @@ var (
 	OfficialBusinessJID = NewJID("16505361212", LegacyUserServer)
 	MetaAIJID           = NewJID("13135550002", DefaultUserServer)
 	NewMetaAIJID        = NewJID("867051314767696", BotServer)
-	MuseJID             = NewJID("1807055946647697", BotServer) // Also known as "hatch"
+	// TeeMetaAIJID is Meta AI as a member of a group with private processing
+	// (WA Web's META_BOT_TEE_FBID_WID).
+	TeeMetaAIJID = NewJID("1273596044787272", BotServer)
+	MuseJID      = NewJID("1807055946647697", BotServer) // Also known as "hatch"
 )
 
 var (

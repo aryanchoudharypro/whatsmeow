@@ -96,13 +96,14 @@ func (cli *Client) DownloadMediaWithPathToFile(
 	if err != nil {
 		return fmt.Errorf("failed to refresh media connections: %w", err)
 	}
+	ctx = withMediaDownloadBudget(ctx)
 	if len(mmsType) == 0 {
 		mmsType = mediaTypeToMMSType[mediaType]
 	}
 	for i, host := range mediaConn.Hosts {
 		// TODO omit hash for unencrypted media?
 		mediaURL := fmt.Sprintf("https://%s%s&hash=%s&mms-type=%s&__wa-mms=", host.Hostname, directPath, base64.URLEncoding.EncodeToString(encFileHash), mmsType)
-		err = cli.downloadAndDecryptToFile(ctx, mediaURL, mediaKey, mediaType, encFileHash, fileHash, file)
+		err = cli.downloadAndDecryptToFile(withFallbackMediaHost(ctx, i < len(mediaConn.Hosts)-1), mediaURL, mediaKey, mediaType, encFileHash, fileHash, file)
 		if err == nil ||
 			errors.Is(err, ErrInvalidMediaSHA256) ||
 			errors.Is(err, ErrMediaDownloadFailedWith403) ||
@@ -110,10 +111,15 @@ func (cli *Client) DownloadMediaWithPathToFile(
 			errors.Is(err, ErrMediaDownloadFailedWith410) ||
 			errors.Is(err, context.Canceled) {
 			return err
-		} else if i >= len(mediaConn.Hosts)-1 {
+		} else if i >= len(mediaConn.Hosts)-1 || !mediaDownloadAttemptsLeft(ctx) {
 			return fmt.Errorf("failed to download media from last host: %w", err)
 		}
 		cli.Log.Warnf("Failed to download media: %s, trying with next host...", err)
+		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+			return fmt.Errorf("failed to seek to start of file to try the next host: %w", seekErr)
+		} else if truncErr := file.Truncate(0); truncErr != nil {
+			return fmt.Errorf("failed to truncate file to try the next host: %w", truncErr)
+		}
 	}
 	return err
 }
@@ -162,15 +168,16 @@ func (cli *Client) downloadAndDecryptToFile(
 
 func (cli *Client) downloadPossiblyEncryptedMediaWithRetriesToFile(ctx context.Context, url string, checksum []byte, file File) (mac []byte, err error) {
 	for retryNum := range 5 {
+		attempt := takeMediaDownloadAttempt(ctx)
 		if checksum == nil {
 			_, _, err = cli.downloadMediaToFile(ctx, url, file)
 		} else {
 			mac, err = cli.downloadEncryptedMediaToFile(ctx, url, checksum, file)
 		}
-		if err == nil || !shouldRetryMediaDownload(err) {
+		if err == nil || !shouldRetryMediaDownload(err) || !mediaDownloadAttemptsLeft(ctx) || hasFallbackMediaHost(ctx) {
 			return
 		}
-		retryDuration := time.Duration(retryNum+1) * time.Second
+		retryDuration := mediaRetryDelay(attempt, retryNum)
 		if httpErr, ok := errors.AsType[DownloadHTTPError](err); ok {
 			retryDuration = retryafter.Parse(httpErr.Response.Header.Get("Retry-After"), retryDuration)
 		}

@@ -311,13 +311,14 @@ func (cli *Client) DownloadMediaWithPath(
 	if err != nil {
 		return nil, fmt.Errorf("failed to refresh media connections: %w", err)
 	}
+	ctx = withMediaDownloadBudget(ctx)
 	if len(mmsType) == 0 {
 		mmsType = mediaTypeToMMSType[mediaType]
 	}
 	for i, host := range mediaConn.Hosts {
 		// TODO omit hash for unencrypted media?
 		mediaURL := fmt.Sprintf("https://%s%s&hash=%s&mms-type=%s&__wa-mms=", host.Hostname, directPath, base64.URLEncoding.EncodeToString(encFileHash), mmsType)
-		data, err = cli.downloadAndDecrypt(ctx, mediaURL, mediaKey, mediaType, encFileHash, fileHash)
+		data, err = cli.downloadAndDecrypt(withFallbackMediaHost(ctx, i < len(mediaConn.Hosts)-1), mediaURL, mediaKey, mediaType, encFileHash, fileHash)
 		if err == nil ||
 			errors.Is(err, ErrInvalidMediaSHA256) ||
 			errors.Is(err, ErrMediaDownloadFailedWith403) ||
@@ -325,7 +326,7 @@ func (cli *Client) DownloadMediaWithPath(
 			errors.Is(err, ErrMediaDownloadFailedWith410) ||
 			errors.Is(err, context.Canceled) {
 			return
-		} else if i >= len(mediaConn.Hosts)-1 {
+		} else if i >= len(mediaConn.Hosts)-1 || !mediaDownloadAttemptsLeft(ctx) {
 			return nil, fmt.Errorf("failed to download media from last host: %w", err)
 		}
 		cli.Log.Warnf("Failed to download media: %s, trying with next host...", err)
@@ -379,15 +380,16 @@ func shouldRetryMediaDownload(err error) bool {
 
 func (cli *Client) downloadPossiblyEncryptedMediaWithRetries(ctx context.Context, url string, checksum []byte) (file, mac []byte, err error) {
 	for retryNum := range 5 {
+		attempt := takeMediaDownloadAttempt(ctx)
 		if checksum == nil {
 			file, err = cli.downloadMedia(ctx, url)
 		} else {
 			file, mac, err = cli.downloadEncryptedMedia(ctx, url, checksum)
 		}
-		if err == nil || !shouldRetryMediaDownload(err) {
+		if err == nil || !shouldRetryMediaDownload(err) || !mediaDownloadAttemptsLeft(ctx) || hasFallbackMediaHost(ctx) {
 			return
 		}
-		retryDuration := time.Duration(retryNum+1) * time.Second
+		retryDuration := mediaRetryDelay(attempt, retryNum)
 		if httpErr, ok := errors.AsType[DownloadHTTPError](err); ok {
 			retryDuration = retryafter.Parse(httpErr.Response.Header.Get("Retry-After"), retryDuration)
 		}
@@ -463,4 +465,63 @@ func validateMedia(iv, file, macKey, mac []byte) error {
 		return ErrInvalidMediaHMAC
 	}
 	return nil
+}
+
+// WhatsApp Web gives one media download 3 retries in all, starting at 1 second
+// and doubling (WAWebMmsClientMmsBackoffOptions: retries 3, minTimeout 1s),
+// moving to the fallback host as it goes. whatsmeow used to try every host 5
+// times each, so on a bad connection one download could keep going for
+// minutes, and many of them at once looked like it never stopped.
+const maxMediaDownloadAttempts = 4
+
+type mediaDownloadAttemptsKey struct{}
+
+type mediaDownloadAttempts struct{ used int }
+
+// withMediaDownloadBudget gives a download its attempt budget, shared by all
+// the hosts it tries. A context that already has one keeps it.
+func withMediaDownloadBudget(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(mediaDownloadAttemptsKey{}).(*mediaDownloadAttempts); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, mediaDownloadAttemptsKey{}, &mediaDownloadAttempts{})
+}
+
+// takeMediaDownloadAttempt counts one attempt and says which one it is (from
+// 0), or -1 when the context has no budget (callers outside the normal
+// download path keep the old five tries).
+func takeMediaDownloadAttempt(ctx context.Context) int {
+	a, ok := ctx.Value(mediaDownloadAttemptsKey{}).(*mediaDownloadAttempts)
+	if !ok {
+		return -1
+	}
+	a.used++
+	return a.used - 1
+}
+
+// mediaDownloadAttemptsLeft says whether the download may try again.
+func mediaDownloadAttemptsLeft(ctx context.Context) bool {
+	a, ok := ctx.Value(mediaDownloadAttemptsKey{}).(*mediaDownloadAttempts)
+	return !ok || a.used < maxMediaDownloadAttempts
+}
+
+// mediaRetryDelay is the wait before retrying after the given attempt.
+func mediaRetryDelay(attempt, retryNum int) time.Duration {
+	if attempt < 0 {
+		return time.Duration(retryNum+1) * time.Second
+	}
+	return time.Second << attempt
+}
+
+type fallbackMediaHostKey struct{}
+
+// withFallbackMediaHost marks whether another host is left to try, so a failed
+// attempt moves on to it instead of retrying the same host, as WA Web does.
+func withFallbackMediaHost(ctx context.Context, more bool) context.Context {
+	return context.WithValue(ctx, fallbackMediaHostKey{}, more)
+}
+
+func hasFallbackMediaHost(ctx context.Context) bool {
+	more, _ := ctx.Value(fallbackMediaHostKey{}).(bool)
+	return more
 }

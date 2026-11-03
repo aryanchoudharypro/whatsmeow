@@ -328,6 +328,19 @@ func (proc *Processor) validatePatch(
 	validateMACs bool,
 ) (newState HashState, warn []error, err error) {
 	version := patch.GetVersion().GetVersion()
+	// A terminal patch means the server can't serve this collection any
+	// more; WhatsApp Web treats it as fatal instead of applying it.
+	if exit := patch.GetExitCode(); exit != nil {
+		err = fmt.Errorf("received terminal patch v%d with exit code %d (%s)", version, exit.GetCode(), exit.GetText())
+		return
+	}
+	// Patches must follow the local version one by one. WhatsApp Web stops
+	// on a gap ("has missing patches") rather than building on a hash that
+	// is missing whatever the skipped patches changed.
+	if currentState.Version > 0 && version != currentState.Version+1 {
+		err = fmt.Errorf("received patch v%d, but the local version is v%d: %w", version, currentState.Version, ErrPatchOutOfOrder)
+		return
+	}
 	newState = currentState
 	newState.Version = version
 	warn, err = newState.updateHash(patch.GetMutations(), func(indexMAC []byte, maxIndex int) ([]byte, error) {
@@ -368,7 +381,8 @@ func (proc *Processor) validatePatch(
 			if len(warn) > 0 {
 				proc.Log.Warnf("Warnings while updating hash for %s: %+v", patchName, warn)
 			}
-			proc.Log.Warnf("Applying %s patch v%d despite the LTHash mismatch, as WhatsApp Web does", patchName, version)
+			proc.Log.Warnf("Applying %s patch v%d from device %d despite the LTHash mismatch, as WhatsApp Web does (%s)",
+				patchName, version, patch.GetDeviceIndex(), describeMismatch(patch, currentState))
 			err = nil
 		}
 		if err != nil {
@@ -435,4 +449,24 @@ func (proc *Processor) DecodePatches(
 		currentState = newState
 	}
 	return
+}
+
+// describeMismatch says whose copy was off when a patch fails the LTHash
+// check, the way WhatsApp Web's fatal report compares the sender's debug data
+// with its own hash: if the sender's hash before the patch matches ours, the
+// sender computed the new one wrongly; if not, the two copies had already
+// drifted apart before this patch.
+func describeMismatch(patch *waServerSync.SyncdPatch, before HashState) string {
+	var debug waSyncAction.PatchDebugData
+	if len(patch.GetClientDebugData()) == 0 || proto.Unmarshal(patch.GetClientDebugData(), &debug) != nil {
+		return "sender sent no debug data"
+	}
+	sender := fmt.Sprintf("sender platform %s, primary %t", debug.GetSenderPlatform(), debug.GetIsSenderPrimary())
+	if len(debug.GetCurrentLthash()) == 0 {
+		return sender + ", no hash in debug data"
+	}
+	if bytes.Equal(debug.GetCurrentLthash(), before.Hash[:]) {
+		return sender + ", same hash as ours before the patch"
+	}
+	return sender + ", its hash before the patch differs from ours"
 }

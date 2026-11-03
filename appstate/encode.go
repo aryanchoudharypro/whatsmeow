@@ -11,8 +11,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow/proto/waCommon"
+	"go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/proto/waServerSync"
 	"go.mau.fi/whatsmeow/proto/waSyncAction"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/util/cbcutil"
 )
@@ -390,6 +392,22 @@ func (proc *Processor) EncodePatch(ctx context.Context, keyID []byte, state Hash
 		SnapshotMAC: state.generateSnapshotMAC(patchInfo.Type, keys.SnapshotMAC),
 		KeyID:       &waServerSync.KeyId{ID: keyID},
 		Mutations:   mutations,
+	}
+	// WhatsApp Web (WAWebSyncdRequestBuilderBuild) names its own device and
+	// platform on every patch it sends. Without a device index, the patch
+	// reads as device 0, the phone, to everyone who receives it.
+	if proc.Store != nil && proc.Store.ID != nil {
+		syncdPatch.DeviceIndex = proto.Uint32(uint32(proc.Store.ID.Device))
+	}
+	platform := waSyncAction.PatchDebugData_WEB
+	if store.DeviceProps.GetPlatformType() == waCompanionReg.DeviceProps_UWP {
+		platform = waSyncAction.PatchDebugData_UWP
+	}
+	if debugData, err := proto.Marshal(&waSyncAction.PatchDebugData{
+		IsSenderPrimary: proto.Bool(false),
+		SenderPlatform:  platform.Enum(),
+	}); err == nil {
+		syncdPatch.ClientDebugData = debugData
 	}
 	syncdPatch.PatchMAC = generatePatchMAC(syncdPatch, patchInfo.Type, keys.PatchMAC, state.Version)
 

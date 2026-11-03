@@ -16,5 +16,6 @@ var (
 	ErrMismatchingContentMAC            = errors.New("mismatching content MAC")
 	ErrMismatchingIndexMAC              = errors.New("mismatching index MAC")
 	ErrKeyNotFound                      = errors.New("didn't find app state key")
+	ErrPatchOutOfOrder                  = errors.New("patch version doesn't follow the local version")
 	ErrNothingToSend                    = errors.New("patch has no mutations left to send")
 )

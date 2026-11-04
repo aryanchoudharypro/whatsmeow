@@ -1334,7 +1334,9 @@ func (cli *Client) getMessageContent(
 		content = append(content, *extraParams.additionalNodes...)
 	}
 
-	if buttonType := getButtonTypeFromMessage(message); buttonType != "" {
+	// WA Web sends list replies as ordinary messages without a biz child, and the
+	// server rejects the <biz><list_response/></biz> form with error 479.
+	if buttonType := getButtonTypeFromMessage(message); buttonType != "" && buttonType != "list_response" {
 		content = append(content, waBinary.Node{
 			Tag: "biz",
 			Content: []waBinary.Node{{

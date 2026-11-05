@@ -1124,6 +1124,8 @@ func getMediaTypeFromMessage(msg *waE2E.Message) string {
 		return "url"
 	case msg.ImageMessage != nil:
 		return "image"
+	case msg.MessageHistoryBundle != nil:
+		return "group_history"
 	case msg.StickerMessage != nil:
 		return "sticker"
 	case msg.DocumentMessage != nil:

@@ -197,6 +197,24 @@ func (s *SQLStore) DeleteIdentity(ctx context.Context, address string) error {
 	return err
 }
 
+// GetIdentity returns the identity key stored for a Signal address, and
+// false when none is stored.
+func (s *SQLStore) GetIdentity(ctx context.Context, address string) ([32]byte, bool, error) {
+	if cached, ok := s.cachedIdentity(address); ok {
+		return cached, true, nil
+	}
+	var existing []byte
+	err := s.db.QueryRow(ctx, getIdentityQuery, s.JID, address).Scan(&existing)
+	if errors.Is(err, sql.ErrNoRows) {
+		return [32]byte{}, false, nil
+	} else if err != nil {
+		return [32]byte{}, false, err
+	} else if len(existing) != 32 {
+		return [32]byte{}, false, ErrInvalidLength
+	}
+	return *(*[32]byte)(existing), true, nil
+}
+
 func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [32]byte) (bool, error) {
 	if cached, ok := s.cachedIdentity(address); ok {
 		return cached == key, nil

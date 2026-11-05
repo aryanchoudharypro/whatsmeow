@@ -178,6 +178,13 @@ type GroupParticipant struct {
 	Label      string
 	LabelSetAt time.Time
 
+	// JoinTime is when the participant joined the group, if the server said.
+	// HistorySent is the server's group_history_sent attribute ("true" once
+	// someone has sent them recent group history, "false", or "" when not
+	// given). See Client.SendGroupHistory.
+	JoinTime    time.Time
+	HistorySent string
+
 	// When creating groups, adding some participants may fail.
 	// In such cases, the error code will be here.
 	Error      int

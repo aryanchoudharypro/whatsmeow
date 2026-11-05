@@ -960,6 +960,8 @@ func parseParticipant(childAG *waBinary.AttrUtility, child *waBinary.Node) types
 		DisplayName:  childAG.OptionalString("display_name"),
 		Label:        childAG.OptionalString("participant_label"),
 		LabelSetAt:   childAG.OptionalUnixTime("participant_label_mtime"),
+		JoinTime:     childAG.OptionalUnixTime("join_time"),
+		HistorySent:  childAG.OptionalString("group_history_sent"),
 	}
 	if participant.JID.Server == types.HiddenUserServer {
 		participant.LID = participant.JID

@@ -166,6 +166,36 @@ type SendRequestExtra struct {
 	// Who a status update (sent to types.StatusBroadcastJID) goes to. When
 	// nil, it's worked out from the status privacy the server reports.
 	StatusRecipients []types.JID
+	// The status privacy setting a status update (sent to
+	// types.StatusBroadcastJID) was posted with: StatusSettingAllowList,
+	// StatusSettingDenyList or StatusSettingContacts. It goes into the
+	// stanza's <meta status_setting> the way WA Web's
+	// WAWebEncryptAndSendStatusMsg.buildStatusMetaNode does. Empty leaves it
+	// out. It's ignored for other chats and for status revokes.
+	StatusSetting string
+}
+
+// Values for SendRequestExtra.StatusSetting, as WA Web's
+// WAWebStatusPublishRequestArgs.toStatusSettingMetaAttribute names them.
+const (
+	StatusSettingAllowList = "allowlist"
+	StatusSettingDenyList  = "denylist"
+	StatusSettingContacts  = "contacts"
+)
+
+// statusSettingAttr returns the <meta status_setting> value a message to to
+// carries, or "" for none.
+func statusSettingAttr(to types.JID, message *waE2E.Message, setting string) (string, error) {
+	if setting == "" || to != types.StatusBroadcastJID ||
+		(message.GetProtocolMessage() != nil && message.GetProtocolMessage().GetType() == waE2E.ProtocolMessage_REVOKE) {
+		return "", nil
+	}
+	switch setting {
+	case StatusSettingAllowList, StatusSettingDenyList, StatusSettingContacts:
+		return setting, nil
+	default:
+		return "", fmt.Errorf("invalid status setting %q", setting)
+	}
 }
 
 // SendMessage sends the given message.
@@ -438,6 +468,20 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 			extraParams.metaNode = &waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{}}
 		}
 		extraParams.metaNode.Attrs["view_once"] = "true"
+	}
+
+	// A status update says which privacy setting it went out under (WA Web's
+	// buildStatusMetaNode); a revoke goes to the status' own recipients and
+	// carries none.
+	var statusSetting string
+	statusSetting, err = statusSettingAttr(to, message, req.StatusSetting)
+	if err != nil {
+		return
+	} else if statusSetting != "" {
+		if extraParams.metaNode == nil {
+			extraParams.metaNode = &waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{}}
+		}
+		extraParams.metaNode.Attrs["status_setting"] = statusSetting
 	}
 
 	if req.AdditionalNodes != nil {

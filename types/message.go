@@ -95,6 +95,24 @@ type MsgMetaInfo struct {
 
 	ThreadMessageID        MessageID
 	ThreadMessageSenderJID JID
+
+	// ScheduledMessage is set when the stanza's <meta> has
+	// type="scheduled_message".
+	ScheduledMessage *ScheduledMessageMeta
+}
+
+// ScheduledMessageMeta is what a <meta type="scheduled_message" st="...">
+// carries, as WA Web's WAWebHandleMsgParser reads it: when the message is
+// scheduled for and the reveal key that decrypts its ConditionalRevealMessage.
+// The sender's own devices get the key inline; other recipients get it later
+// in a NotificationScheduledMessageReveal notification.
+type ScheduledMessageMeta struct {
+	// Time is the st attribute (seconds). Zero when absent, as on an unschedule.
+	Time time.Time
+	// RevealKeyID is the rkid attribute of the <key> child.
+	RevealKeyID string
+	// RevealKey is the 32-byte AES-256-GCM key in the <key> child, or nil.
+	RevealKey []byte
 }
 
 // MessageInfo contains metadata about an incoming message.

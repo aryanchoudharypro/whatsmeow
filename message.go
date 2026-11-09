@@ -229,6 +229,12 @@ func (cli *Client) parseMsgMetaInfo(node waBinary.Node) (metaInfo types.MsgMetaI
 	}
 	metaInfo.ThreadMessageID = types.MessageID(ag.OptionalString("thread_msg_id"))
 	metaInfo.ThreadMessageSenderJID = ag.OptionalJIDOrEmpty("thread_msg_sender_jid")
+	if ag.OptionalString("type") == ScheduledMessageMetaType {
+		metaInfo.ScheduledMessage, err = parseScheduledMessageMeta(metaNode)
+		if err != nil {
+			return
+		}
+	}
 	err = ag.Error()
 	return
 }

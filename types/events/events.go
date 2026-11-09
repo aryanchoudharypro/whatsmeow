@@ -782,6 +782,42 @@ type MexNotificationData struct {
 	OpName    string
 }
 
+// ScheduledMessageReveal is emitted when the server hands out the reveal key
+// of a scheduled message someone sent you (mex op
+// NotificationScheduledMessageReveal, handled by WA Web's
+// WAWebScheduledMsgRevealNotificationHandler). Decrypt the message's
+// ConditionalRevealMessage with the key (whatsmeow.DecryptScheduledMessage)
+// and show it in the chat; if no message with RevealKeyID has arrived yet,
+// WA Web keeps the key as an orphan for when it does.
+type ScheduledMessageReveal struct {
+	Mex MexNotificationData
+	// From is the notification's from attribute.
+	From types.JID
+	// Chat is chat_jid from the payload, or empty.
+	Chat        types.JID
+	RevealKeyID string
+	RevealKey   []byte
+	// Time is st from the payload, or zero.
+	Time time.Time
+}
+
+// ScheduledMessagePost is emitted when one of your scheduled messages was
+// posted to its chat, or failed to be (mex op
+// NotificationScheduledMessagePost, handled by WA Web's
+// WAWebScheduledMsgPostNotificationHandler). On "SUCCESS" WA Web turns the
+// scheduled message into a normal sent message; anything else marks it
+// failed.
+type ScheduledMessagePost struct {
+	Mex         MexNotificationData
+	RevealKeyID string
+	Status      string
+}
+
+// IsSuccess reports whether the scheduled message was posted.
+func (evt *ScheduledMessagePost) IsSuccess() bool {
+	return evt.Status == "SUCCESS"
+}
+
 // GroupLimitSharingUpdate is emitted when a group's advanced chat privacy
 // setting is turned on or off (mex op NotificationGroupLimitSharingPropertyUpdate,
 // handled by WA Web's WAWebMexLimitSharingUpdateHandler).

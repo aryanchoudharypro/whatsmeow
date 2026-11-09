@@ -8,6 +8,7 @@ package whatsmeow
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -465,6 +466,59 @@ type newsletterEvent struct {
 	// Shared by every group property op; only NotificationGroupLimitSharingPropertyUpdate
 	// is dispatched (as GroupLimitSharingUpdate).
 	GroupPropChange *events.GroupLimitSharingUpdate `json:"xwa2_notify_group_on_prop_change"`
+
+	ScheduledMessageReveal *scheduledMessageRevealPayload `json:"xwa2_notify_scheduled_message_reveal"`
+	ScheduledMessagePost   *scheduledMessagePostPayload   `json:"xwa2_notify_scheduled_message_post"`
+}
+
+// The payloads WA Web's WAWebScheduledMsgRevealNotificationHandler and
+// WAWebScheduledMsgPostNotificationHandler read.
+type scheduledMessageRevealPayload struct {
+	ChatJID string      `json:"chat_jid"`
+	RK      string      `json:"rk"`
+	RKID    string      `json:"rkid"`
+	ST      json.Number `json:"st"`
+}
+
+type scheduledMessagePostPayload struct {
+	RKID   string `json:"rkid"`
+	Status string `json:"status"`
+}
+
+// decodeURLSafeBase64 decodes base64 in either alphabet, padded or not
+// (WA Web's urlSafeBase64ToStandard + decodeB64).
+func decodeURLSafeBase64(value string) ([]byte, error) {
+	value = strings.TrimRight(value, "=")
+	value = strings.NewReplacer("-", "+", "_", "/").Replace(value)
+	return base64.RawStdEncoding.DecodeString(value)
+}
+
+func (cli *Client) dispatchScheduledMessageReveal(node *waBinary.Node, mnd events.MexNotificationData, payload *scheduledMessageRevealPayload) {
+	if payload.RKID == "" || payload.RK == "" {
+		cli.Log.Warnf("Scheduled message reveal notification is missing rkid or rk")
+		return
+	}
+	key, err := decodeURLSafeBase64(payload.RK)
+	if err != nil {
+		cli.Log.Warnf("Failed to decode scheduled message reveal key: %v", err)
+		return
+	}
+	evt := &events.ScheduledMessageReveal{
+		Mex:         mnd,
+		From:        node.AttrGetter().OptionalJIDOrEmpty("from"),
+		RevealKeyID: payload.RKID,
+		RevealKey:   key,
+	}
+	if payload.ChatJID != "" {
+		evt.Chat, err = types.ParseJID(payload.ChatJID)
+		if err != nil {
+			cli.Log.Warnf("Failed to parse chat JID in scheduled message reveal: %v", err)
+		}
+	}
+	if st, err := payload.ST.Int64(); err == nil && st > 0 {
+		evt.Time = time.Unix(st, 0)
+	}
+	cli.dispatchEvent(evt)
 }
 
 func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Node) {
@@ -501,6 +555,15 @@ func (cli *Client) handleMexNotification(ctx context.Context, node *waBinary.Nod
 		} else if wrapper.Data.NotifyAccountReachoutTimelock != nil {
 			wrapper.Data.NotifyAccountReachoutTimelock.Mex = mnd
 			cli.dispatchEvent(wrapper.Data.NotifyAccountReachoutTimelock)
+		} else if wrapper.Data.ScheduledMessageReveal != nil {
+			cli.dispatchScheduledMessageReveal(node, mnd, wrapper.Data.ScheduledMessageReveal)
+		} else if wrapper.Data.ScheduledMessagePost != nil {
+			post := wrapper.Data.ScheduledMessagePost
+			if post.RKID == "" || post.Status == "" {
+				cli.Log.Warnf("Scheduled message post notification is missing rkid or status")
+				continue
+			}
+			cli.dispatchEvent(&events.ScheduledMessagePost{Mex: mnd, RevealKeyID: post.RKID, Status: post.Status})
 		} else if wrapper.Data.GroupPropChange != nil && mnd.OpName == "NotificationGroupLimitSharingPropertyUpdate" {
 			evt := wrapper.Data.GroupPropChange
 			evt.Mex = mnd

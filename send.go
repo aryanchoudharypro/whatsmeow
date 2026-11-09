@@ -173,6 +173,9 @@ type SendRequestExtra struct {
 	// WAWebEncryptAndSendStatusMsg.buildStatusMetaNode does. Empty leaves it
 	// out. It's ignored for other chats and for status revokes.
 	StatusSetting string
+
+	// Set by SendScheduledMessage and UnscheduleMessage.
+	scheduled *scheduledSendMeta
 }
 
 // Values for SendRequestExtra.StatusSetting, as WA Web's
@@ -309,7 +312,9 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		}
 		// WhatsApp Web stamps the version of the <reporting> token it sends
 		// next to the secret, and receivers validate the token against it.
-		if cli.shouldIncludeReportingToken(message) {
+		// A scheduled message's wrapper carries only the secret (WA Web's
+		// WAWebScheduledMsgSenderJob); the version is in the inner message.
+		if cli.shouldIncludeReportingToken(message) && (req.scheduled == nil || req.scheduled.unschedule) {
 			message.MessageContextInfo.ReportingTokenVersion = proto.Int32(reportingTokenVersion)
 		}
 	}
@@ -484,6 +489,21 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 		extraParams.metaNode.Attrs["status_setting"] = statusSetting
 	}
 
+	// A scheduled message (or an unschedule) says so in <meta>, and is sent
+	// with the type and media type of the message inside it (WA Web's
+	// WAWebSendMsgMetaNode and WAWebSendUserMsgJob).
+	if req.scheduled != nil {
+		if extraParams.metaNode == nil {
+			extraParams.metaNode = &waBinary.Node{Tag: "meta", Attrs: waBinary.Attrs{}}
+		}
+		req.scheduled.addTo(extraParams.metaNode)
+		if !req.scheduled.unschedule {
+			extraParams.msgType = req.scheduled.stanzaType
+			extraParams.mediaType = req.scheduled.mediaType
+			extraParams.reportingPlaintext = req.scheduled.innerPlaintext
+		}
+	}
+
 	if req.AdditionalNodes != nil {
 		extraParams.additionalNodes = req.AdditionalNodes
 	}
@@ -577,7 +597,9 @@ func (cli *Client) SendMessage(ctx context.Context, to types.JID, message *waE2E
 	resp.ServerID = types.MessageServerID(ag.OptionalInt("server_id"))
 	resp.Timestamp = ag.UnixTime("t")
 	expectedPHash := ag.OptionalString("phash")
-	if errorCode := ag.Int("error"); errorCode != 0 {
+	if errorCode := ag.Int("error"); errorCode == ScheduledMessageLimitNackCode && req.scheduled != nil && !req.scheduled.unschedule {
+		err = fmt.Errorf("%w (%w %d)", ErrScheduledMessageLimitReached, ErrServerReturnedError, errorCode)
+	} else if errorCode != 0 {
 		err = fmt.Errorf("%w %d", ErrServerReturnedError, errorCode)
 	} else if onAccepted != nil && (expectedPHash == "" || expectedPHash == phash) {
 		// A participant hash mismatch means our member list was wrong, so
@@ -908,6 +930,35 @@ type nodeExtraParams struct {
 	// phashExtra is counted in a group's participant hash without being
 	// sent to (Meta AI as a group member).
 	phashExtra []types.JID
+	// msgType and mediaType replace the type and mediatype attributes
+	// worked out from the message (a scheduled message's wrapper is sent
+	// as the message inside it).
+	msgType   string
+	mediaType string
+	// reportingPlaintext, if set, is what the reporting token is computed
+	// over instead of the sent plaintext (a scheduled message's inner one).
+	reportingPlaintext []byte
+}
+
+func (p *nodeExtraParams) typeOf(message *waE2E.Message) string {
+	if p.msgType != "" {
+		return p.msgType
+	}
+	return getTypeFromMessage(message)
+}
+
+func (p *nodeExtraParams) mediaTypeOf(message *waE2E.Message) string {
+	if p.mediaType != "" {
+		return p.mediaType
+	}
+	return getMediaTypeFromMessage(message)
+}
+
+func (p *nodeExtraParams) reportingSource(plaintext []byte) []byte {
+	if p.reportingPlaintext != nil {
+		return p.reportingPlaintext
+	}
+	return plaintext
 }
 
 // groupMetaAIParticipant returns Meta AI if it's a member of the group, the
@@ -1014,12 +1065,12 @@ func (cli *Client) sendGroup(
 		Content: ciphertext,
 		Attrs:   waBinary.Attrs{"v": "2", "type": "skmsg"},
 	}
-	if mediaType := getMediaTypeFromMessage(message); mediaType != "" {
+	if mediaType := extraParams.mediaTypeOf(message); mediaType != "" {
 		skMsg.Attrs["mediatype"] = mediaType
 	}
 	node.Content = append(node.GetChildren(), skMsg)
 	if cli.shouldIncludeReportingToken(message) && message.GetMessageContextInfo().GetMessageSecret() != nil {
-		node.Content = append(node.GetChildren(), cli.getMessageReportingToken(plaintext, message, ownID, to, id))
+		node.Content = append(node.GetChildren(), cli.getMessageReportingToken(extraParams.reportingSource(plaintext), message, ownID, to, id))
 	}
 
 	start = time.Now()
@@ -1089,7 +1140,7 @@ func (cli *Client) sendDM(
 	phash := participantListHashV2(allDevices)
 
 	if cli.shouldIncludeReportingToken(message) && message.GetMessageContextInfo().GetMessageSecret() != nil {
-		node.Content = append(node.GetChildren(), cli.getMessageReportingToken(messagePlaintext, message, ownID, to, id))
+		node.Content = append(node.GetChildren(), cli.getMessageReportingToken(extraParams.reportingSource(messagePlaintext), message, ownID, to, id))
 	}
 
 	tcTokenBytes, tcErr := cli.ensureTCToken(ctx, to)
@@ -1268,6 +1319,9 @@ func getEditAttribute(msg *waE2E.Message) types.EditAttribute {
 			if msg.ProtocolMessage.EditedMessage != nil {
 				return types.EditAttributeMessageEdit
 			}
+		case waE2E.ProtocolMessage_MESSAGE_UNSCHEDULE:
+			// WA Web's WAWebSendMsgCommonApi.getEditAttrValue
+			return types.EditAttributeSenderRevoke
 		}
 	case msg.ReactionMessage != nil && msg.ReactionMessage.GetText() == RemoveReactionText:
 		return types.EditAttributeSenderRevoke
@@ -1418,10 +1472,10 @@ func (cli *Client) prepareMessageNode(
 		})
 	}
 
-	msgType := getTypeFromMessage(message)
+	msgType := extraParams.typeOf(message)
 	encAttrs := waBinary.Attrs{}
 	// Only include encMediaType for 1:1 messages (groups don't have a device-sent message plaintext)
-	if encMediaType := getMediaTypeFromMessage(message); dsmPlaintext != nil && encMediaType != "" {
+	if encMediaType := extraParams.mediaTypeOf(message); dsmPlaintext != nil && encMediaType != "" {
 		encAttrs["mediatype"] = encMediaType
 	}
 	attrs := waBinary.Attrs{
@@ -1440,7 +1494,8 @@ func (cli *Client) prepareMessageNode(
 		attrs["edit"] = string(editAttr)
 		encAttrs["decrypt-fail"] = string(events.DecryptFailHide)
 	}
-	if msgType == "reaction" || message.GetPollUpdateMessage() != nil {
+	// WA Web hides a failed decrypt of these too (decryptFailAttributeFromProtobuf).
+	if msgType == "reaction" || message.GetPollUpdateMessage() != nil || message.ConditionalRevealMessage != nil {
 		encAttrs["decrypt-fail"] = string(events.DecryptFailHide)
 	}
 

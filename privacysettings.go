@@ -8,6 +8,7 @@ package whatsmeow
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -188,17 +189,36 @@ func (cli *Client) GetPrivacyDisallowedList(ctx context.Context, name types.Priv
 	if cli == nil {
 		return nil, ErrClientIsNil
 	}
+	// Like WA Web's queryPrivacyDisallowedList: ask with LID addressing first
+	// and fall back to the old phone number request if that fails.
+	list, err := cli.queryPrivacyDisallowedList(ctx, name, true)
+	if err != nil {
+		cli.Log.Debugf("LID query for %s privacy list failed, trying phone numbers: %v", name, err)
+		var pnErr error
+		list, pnErr = cli.queryPrivacyDisallowedList(ctx, name, false)
+		if pnErr != nil {
+			return nil, fmt.Errorf("%w (phone number query: %v)", err, pnErr)
+		}
+	}
+	return list, nil
+}
+
+func (cli *Client) queryPrivacyDisallowedList(ctx context.Context, name types.PrivacySettingType, lidMode bool) (*types.PrivacyDisallowedList, error) {
+	privacy := waBinary.Node{
+		Tag: "privacy",
+		Content: []waBinary.Node{{
+			Tag:   "list",
+			Attrs: waBinary.Attrs{"name": string(name), "value": string(types.PrivacySettingContactBlacklist)},
+		}},
+	}
+	if lidMode {
+		privacy.Attrs = waBinary.Attrs{"addressing_mode": string(types.AddressingModeLID)}
+	}
 	resp, err := cli.sendIQ(ctx, infoQuery{
 		Namespace: "privacy",
 		Type:      iqGet,
 		To:        types.ServerJID,
-		Content: []waBinary.Node{{
-			Tag: "privacy",
-			Content: []waBinary.Node{{
-				Tag:   "list",
-				Attrs: waBinary.Attrs{"name": string(name), "value": string(types.PrivacySettingContactBlacklist)},
-			}},
-		}},
+		Content:   []waBinary.Node{privacy},
 	})
 	if err != nil {
 		return nil, err
@@ -210,6 +230,9 @@ func (cli *Client) GetPrivacyDisallowedList(ctx context.Context, name types.Priv
 	return parsePrivacyDisallowedList(&privacyNode, name), nil
 }
 
+// parsePrivacyDisallowedList reads both reply shapes: with
+// addressing_mode="lid" each user's jid is an optional LID with the phone
+// number in pn_jid, otherwise jid is the phone number with the LID in lid.
 func parsePrivacyDisallowedList(privacyNode *waBinary.Node, name types.PrivacySettingType) *types.PrivacyDisallowedList {
 	list := &types.PrivacyDisallowedList{Name: name}
 	for _, listNode := range privacyNode.GetChildrenByTag("list") {
@@ -220,11 +243,18 @@ func parsePrivacyDisallowedList(privacyNode *waBinary.Node, name types.PrivacySe
 		list.DHash = ag.OptionalString("dhash")
 		for _, userNode := range listNode.GetChildrenByTag("user") {
 			uag := userNode.AttrGetter()
-			user := types.PrivacyListUser{JID: uag.JID("jid")}
-			if pn, ok := uag.GetJID("pn_jid", false); ok {
-				user.PN = pn
+			var user types.PrivacyListUser
+			jid, _ := uag.GetJID("jid", false)
+			pn, _ := uag.GetJID("pn_jid", false)
+			lid, _ := uag.GetJID("lid", false)
+			if jid.Server == types.DefaultUserServer && pn.IsEmpty() {
+				pn, jid = jid, lid
 			}
-			if uag.OK() {
+			user.JID, user.PN = jid, pn
+			if user.JID.IsEmpty() {
+				user.JID = pn
+			}
+			if !user.JID.IsEmpty() {
 				list.Users = append(list.Users, user)
 			}
 		}
@@ -251,9 +281,10 @@ func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.Priv
 			"value": string(types.PrivacySettingContactBlacklist),
 		},
 	}
-	if dhash != "" {
-		category.Attrs["dhash"] = dhash
+	if dhash == "" {
+		dhash = "none"
 	}
+	category.Attrs["dhash"] = dhash
 	users := make([]waBinary.Node, 0, len(changes))
 	for _, change := range changes {
 		attrs := waBinary.Attrs{"action": string(change.Action), "jid": change.JID.ToNonAD()}
@@ -281,7 +312,14 @@ func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.Priv
 	newHash := ""
 	if privacyNode, ok := resp.GetOptionalChildByTag("privacy"); ok {
 		for _, child := range privacyNode.GetChildrenByTag("category") {
-			newHash = child.AttrGetter().OptionalString("dhash")
+			cag := child.AttrGetter()
+			if cag.OptionalString("value") == "error" {
+				if errNode, ok := child.GetOptionalChildByTag("error"); ok {
+					return "", fmt.Errorf("server refused the list change: %s %s", errNode.AttrGetter().OptionalString("code"), errNode.AttrGetter().OptionalString("text"))
+				}
+				return "", fmt.Errorf("server refused the list change")
+			}
+			newHash = cag.OptionalString("dhash")
 		}
 	}
 	if val := cli.privacySettingsCache.Load(); val != nil {

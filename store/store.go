@@ -263,6 +263,10 @@ type Device struct {
 	// loads it from ConnState before connecting and bumps it after each
 	// successful login, like WhatsApp Web's getLoginCounter.
 	LoginCounter int32
+	// SuccessfulLogins is sent as ClientPayload.connectAttemptCount. It
+	// counts the logins that succeeded since the process started, like
+	// WhatsApp Web's incrementSuccessfulLoginCounter.
+	SuccessfulLogins uint32
 	// OldSignedPreKeys are signed prekeys that were rotated out (or staged
 	// for a rotation). They are kept so messages encrypted against them
 	// still decrypt.

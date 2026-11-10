@@ -175,6 +175,7 @@ func (cli *Client) bumpLoginCounter(ctx context.Context) {
 	if cli.Store.LoginCounter < 1<<31-1 {
 		cli.Store.LoginCounter++
 	}
+	cli.Store.SuccessfulLogins++
 	cli.putConnState(ctx, connStateLoginCounter, []byte(strconv.FormatInt(int64(cli.Store.LoginCounter), 10)))
 }
 

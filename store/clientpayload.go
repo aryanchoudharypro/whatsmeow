@@ -197,6 +197,10 @@ func (device *Device) getLoginPayload() *waWa6.ClientPayload {
 	if payload.Lc == nil {
 		payload.Lc = proto.Int32(device.LoginCounter)
 	}
+	payload.ConnectAttemptCount = proto.Uint32(device.SuccessfulLogins)
+	if device.PushName != "" {
+		payload.PushName = proto.String(device.PushName)
+	}
 	return payload
 }
 

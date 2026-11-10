@@ -474,13 +474,23 @@ func TestLoginCounterStartsAtZeroAfterPairing(t *testing.T) {
 	if lc := cli.Store.GetClientPayload().GetLc(); lc != 0 {
 		t.Fatalf("first login after pairing sends lc %d", lc)
 	}
+	if first := cli.Store.GetClientPayload(); first.ConnectAttemptCount == nil || first.GetConnectAttemptCount() != 0 || first.PushName != nil {
+		t.Fatalf("first login sends attempt count %v and push name %v", first.ConnectAttemptCount, first.PushName)
+	}
 	cli.bumpLoginCounter(ctx)
 	cli.bumpLoginCounter(ctx)
+	cli.Store.PushName = "Test"
+	if later := cli.Store.GetClientPayload(); later.GetConnectAttemptCount() != 2 || later.GetPushName() != "Test" {
+		t.Fatalf("after two logins: attempt count %d, push name %q", later.GetConnectAttemptCount(), later.GetPushName())
+	}
 
 	restarted := NewClient(newTestDevice(state), nil)
 	restarted.loadConnState(ctx)
 	if lc := restarted.Store.GetClientPayload().GetLc(); lc != 2 {
 		t.Fatalf("after two logins and a restart, lc is %d", lc)
+	}
+	if count := restarted.Store.GetClientPayload().GetConnectAttemptCount(); count != 0 {
+		t.Fatalf("attempt count after a restart is %d", count)
 	}
 }
 

@@ -44,6 +44,13 @@ func (cli *Client) StoreObservedLIDMappings(ctx context.Context, mappings []stor
 			continue
 		}
 		if current.IsEmpty() {
+			// A passive pair must not move a LID that already has a
+			// number either: after a number change, an old history pair
+			// (LID, old number) would otherwise take the LID back.
+			if pn, err := cli.Store.LIDs.GetPNForLID(ctx, mapping.LID); err == nil && !pn.IsEmpty() && pn.User != mapping.PN.User {
+				recheck = append(recheck, mapping.PN.ToNonAD())
+				continue
+			}
 			fresh = append(fresh, mapping)
 		} else if current.User != mapping.LID.User {
 			recheck = append(recheck, mapping.PN.ToNonAD())

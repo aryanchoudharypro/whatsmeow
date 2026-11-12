@@ -651,6 +651,17 @@ type Picture struct {
 	PictureID string    // The new picture ID if it was not removed.
 }
 
+// ContactNumberChanged is emitted when a contact moved to a new phone number
+// (a <notification type="contacts"> with <modify>). OldLID and NewLID are set
+// when the server sent them; they are equal when the account kept its LID.
+type ContactNumberChanged struct {
+	OldJID    types.JID
+	NewJID    types.JID
+	OldLID    types.JID
+	NewLID    types.JID
+	Timestamp time.Time
+}
+
 // UserAbout is emitted when a user's about status is changed.
 type UserAbout struct {
 	JID       types.JID // The user whose status was changed

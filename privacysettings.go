@@ -265,7 +265,9 @@ func parsePrivacyDisallowedList(privacyNode *waBinary.Node, name types.PrivacySe
 // SetPrivacyDisallowedList sets a privacy setting to "My contacts except..."
 // (contact_blacklist), adding and removing the given people from its list,
 // the way WhatsApp Web's WAWebSetPrivacyJob does. Each user should be given
-// by LID, with their phone number JID in PN when known.
+// by LID, with their phone number JID in PN when known. If any change has no
+// LID, the whole request falls back to the phone number form, like WhatsApp
+// Web does when it can't build the LID form.
 //
 // dhash is the list's hash from GetPrivacyDisallowedList (empty if there is
 // no list yet). With no changes, the setting is switched to the list as the
@@ -285,13 +287,33 @@ func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.Priv
 		dhash = "none"
 	}
 	category.Attrs["dhash"] = dhash
+	lidForm := true
+	for _, change := range changes {
+		if change.JID.Server != types.HiddenUserServer {
+			lidForm = false
+			break
+		}
+	}
 	users := make([]waBinary.Node, 0, len(changes))
 	for _, change := range changes {
-		attrs := waBinary.Attrs{"action": string(change.Action), "jid": change.JID.ToNonAD()}
-		if !change.PN.IsEmpty() {
-			attrs["pn_jid"] = change.PN.ToNonAD()
+		var attrs waBinary.Attrs
+		if lidForm {
+			attrs = waBinary.Attrs{"action": string(change.Action), "jid": change.JID.ToNonAD()}
+			if !change.PN.IsEmpty() {
+				attrs["pn_jid"] = change.PN.ToNonAD()
+			}
+		} else {
+			jid := change.JID
+			if !change.PN.IsEmpty() {
+				jid = change.PN
+			}
+			attrs = waBinary.Attrs{"action": string(change.Action), "jid": jid.ToNonAD()}
 		}
 		users = append(users, waBinary.Node{Tag: "user", Attrs: attrs})
+	}
+	privacyAttrs := waBinary.Attrs{}
+	if lidForm {
+		privacyAttrs["addressing_mode"] = string(types.AddressingModeLID)
 	}
 	if len(users) > 0 {
 		category.Content = users
@@ -302,7 +324,7 @@ func (cli *Client) SetPrivacyDisallowedList(ctx context.Context, name types.Priv
 		To:        types.ServerJID,
 		Content: []waBinary.Node{{
 			Tag:     "privacy",
-			Attrs:   waBinary.Attrs{"addressing_mode": string(types.AddressingModeLID)},
+			Attrs:   privacyAttrs,
 			Content: []waBinary.Node{category},
 		}},
 	})

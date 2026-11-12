@@ -28,6 +28,10 @@ var (
 
 	// KeepAliveMaxFailTime specifies the maximum time to wait before forcing a reconnect if keepalives fail repeatedly.
 	KeepAliveMaxFailTime = 3 * time.Minute
+	// DeadSocketTime is how long a request (a keepalive ping or any other
+	// iq) may go without a single frame coming back before the socket is
+	// treated as dead and reconnected, as WhatsApp Web's deadSocketTime.
+	DeadSocketTime = 20 * time.Second
 )
 
 func (cli *Client) keepAliveLoop(ctx, connCtx context.Context) {
@@ -37,6 +41,12 @@ func (cli *Client) keepAliveLoop(ctx, connCtx context.Context) {
 		interval := rand.Int64N(KeepAliveIntervalMax.Milliseconds()-KeepAliveIntervalMin.Milliseconds()) + KeepAliveIntervalMin.Milliseconds()
 		select {
 		case <-time.After(time.Duration(interval) * time.Millisecond):
+			// WhatsApp Web only pings an idle socket: while a request is
+			// still waiting for its answer, the dead socket timer is
+			// already watching the connection.
+			if cli.hasPendingResponses() {
+				continue
+			}
 			isSuccess, shouldContinue, wedged := cli.sendKeepAlive(connCtx)
 			if !shouldContinue {
 				return
@@ -105,5 +115,40 @@ func (cli *Client) sendKeepAlive(ctx context.Context) (isSuccess, shouldContinue
 		return false, true, false
 	case <-ctx.Done():
 		return false, false, false
+	}
+}
+
+func (cli *Client) hasPendingResponses() bool {
+	cli.responseWaitersLock.Lock()
+	defer cli.responseWaitersLock.Unlock()
+	return len(cli.responseWaiters) > 0
+}
+
+// deadSocketLoop drops the connection once a request has gone DeadSocketTime
+// without any frame arriving, like WhatsApp Web's dead socket timer: every
+// request arms it, every incoming frame disarms it. The socket is closed
+// without a close handshake (nothing would answer one) and as a remote
+// disconnect, so the usual Disconnected event and auto-reconnect follow.
+func (cli *Client) deadSocketLoop(connCtx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-connCtx.Done():
+			return
+		case <-ticker.C:
+		}
+		since := cli.deadSocketSince.Load()
+		if since == 0 || time.Since(time.Unix(0, since)) < DeadSocketTime {
+			continue
+		}
+		cli.Log.Warnf("Socket dead: nothing received for %s after a request, reconnecting", DeadSocketTime)
+		cli.socketLock.Lock()
+		sock := cli.socket
+		cli.socketLock.Unlock()
+		if sock != nil && connCtx.Err() == nil {
+			sock.Abort()
+		}
+		return
 	}
 }

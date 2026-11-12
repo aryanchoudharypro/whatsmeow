@@ -87,6 +87,15 @@ func (ns *NoiseSocket) Stop(disconnect, allowOnDisconnect bool) {
 	}
 }
 
+// Abort closes the socket at once, without a websocket close handshake, and
+// reports it as a remote disconnect.
+func (ns *NoiseSocket) Abort() {
+	if ns.destroyed.CompareAndSwap(false, true) {
+		close(ns.stopConsumer)
+		ns.fs.Close(0)
+	}
+}
+
 func (ns *NoiseSocket) SendFrame(ctx context.Context, plaintext []byte) error {
 	ns.writeLock.Lock()
 	defer ns.writeLock.Unlock()

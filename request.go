@@ -140,6 +140,7 @@ func (cli *Client) sendIQAsyncAndGetData(ctx context.Context, query *infoQuery) 
 		cli.cancelResponse(query.ID, waiter)
 		return nil, data, err
 	}
+	cli.deadSocketSince.CompareAndSwap(0, time.Now().UnixNano())
 	return waiter, data, nil
 }
 

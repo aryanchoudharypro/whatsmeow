@@ -164,6 +164,10 @@ type Client struct {
 
 	lastUnifiedSession atomic.Int64
 
+	// deadSocketSince is when the oldest request still waiting for any
+	// frame back was sent (unix nanoseconds), or 0. See deadSocketLoop.
+	deadSocketSince atomic.Int64
+
 	mediaConnCache *MediaConn
 	mediaConnLock  sync.Mutex
 
@@ -693,7 +697,9 @@ func (cli *Client) unlockedConnect(ctx context.Context) error {
 	}
 	closeWait := make(chan struct{})
 	cli.handlerQueueWait = closeWait
+	cli.deadSocketSince.Store(0)
 	go cli.keepAliveLoop(ctx, fs.Context())
+	go cli.deadSocketLoop(fs.Context())
 	go cli.handlerQueueLoop(ctx, fs.Context(), queue, closeWait)
 	return nil
 }
@@ -1002,6 +1008,7 @@ func (cli *Client) makeFrameHandler(queue chan *waBinary.Node) func(ctx context.
 }
 
 func (cli *Client) handleFrame(ctx context.Context, data []byte, queue chan *waBinary.Node) {
+	cli.deadSocketSince.Store(0)
 	defer func() {
 		if err := recover(); err != nil {
 			cli.Log.Errorf("Panic while handling frame: %v\n%s", err, debug.Stack())

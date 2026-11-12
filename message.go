@@ -79,6 +79,17 @@ func (cli *Client) handleEncryptedMessage(ctx context.Context, node *waBinary.No
 	}
 }
 
+// handleStatusStanza handles a <status> stanza the way WA Web does: one from a
+// channel is a plaintext newsletter status, and every other one (a contact's or
+// a group's status) is an encrypted message like a <message> stanza.
+func (cli *Client) handleStatusStanza(ctx context.Context, node *waBinary.Node) {
+	if from, ok := node.Attrs["from"].(types.JID); ok && from.Server == types.NewsletterServer {
+		cli.handleUnencryptedMessage(ctx, node)
+		return
+	}
+	cli.handleEncryptedMessage(ctx, node)
+}
+
 func (cli *Client) handleUnencryptedMessage(ctx context.Context, node *waBinary.Node) {
 	info, err := cli.parseMessageInfo(node)
 	if err != nil {

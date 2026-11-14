@@ -7,6 +7,8 @@
 package events
 
 import (
+	"time"
+
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
 )
@@ -159,4 +161,20 @@ type CallScreenShare struct {
 	Participant types.JID
 	Data        *waBinary.Node
 	Synthetic   bool
+}
+
+// FBCallEvent is emitted when a Messenger call in an end-to-end encrypted chat starts, ends or is missed.
+type FBCallEvent struct {
+	ID             string
+	From           types.JID
+	Chat           types.JID
+	Actor          types.JID
+	Timestamp      time.Time
+	CallType       string
+	EventType      string
+	Duration       time.Duration
+	ParentID       string
+	ServerInfoData string
+
+	Data *waBinary.Node
 }

@@ -12,6 +12,7 @@ import (
 	"math/rand/v2"
 	"time"
 
+	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -91,10 +92,13 @@ func (cli *Client) sendKeepAlive(ctx context.Context) (isSuccess, shouldContinue
 	// forever with the connection still looking up.
 	deadline := time.Now().Add(KeepAliveResponseDeadline)
 	writeCtx, cancelWrite := context.WithDeadline(ctx, deadline)
+	id := cli.generateRequestID()
+	cli.lastKeepAliveID.Store(&id)
 	respCh, err := cli.sendIQAsync(writeCtx, infoQuery{
 		Namespace: "w:p",
 		Type:      "get",
 		To:        types.ServerJID,
+		ID:        id,
 	})
 	cancelWrite()
 	if ctx.Err() != nil {
@@ -151,4 +155,12 @@ func (cli *Client) deadSocketLoop(connCtx context.Context) {
 		}
 		return
 	}
+}
+
+func (cli *Client) isKeepAliveNode(node *waBinary.Node) bool {
+	if node.Tag != "iq" || node.Content != nil {
+		return false
+	}
+	id := cli.lastKeepAliveID.Load()
+	return id != nil && node.Attrs["id"] == *id
 }

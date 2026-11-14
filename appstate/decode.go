@@ -251,7 +251,7 @@ func (proc *Processor) validateSnapshotMAC(ctx context.Context, name WAPatchName
 	}
 	snapshotMAC := currentState.generateSnapshotMAC(name, keys.SnapshotMAC)
 	if !hmac.Equal(snapshotMAC, expectedSnapshotMAC) {
-		proc.Log.Warnf("failed to verify patch v%d: %v", currentState.Version, ErrMismatchingLTHash)
+		proc.Log.Warnf("failed to verify patch v%d with key %X: %v", currentState.Version, keyID, ErrMismatchingLTHash)
 		// Was bypassed (logged only, err left nil) because this was
 		// rejecting outbound patches too and breaking desktop-triggered
 		// archive/mute/pin from reaching the phone at all. Re-enabled now
@@ -260,7 +260,7 @@ func (proc *Processor) validateSnapshotMAC(ctx context.Context, name WAPatchName
 		// meant that recovery path never ran, and a mismatch here means the
 		// decrypted mutation content can't be trusted, which is worse than
 		// a caught, retried failure.
-		err = fmt.Errorf("failed to verify patch v%d: %w", currentState.Version, ErrMismatchingLTHash)
+		err = fmt.Errorf("failed to verify patch v%d with key %X: %w", currentState.Version, keyID, ErrMismatchingLTHash)
 	}
 	return
 }
@@ -390,7 +390,7 @@ func (proc *Processor) validatePatch(
 		}
 		patchMAC := generatePatchMAC(patch, patchName, keys.PatchMAC, patch.GetVersion().GetVersion())
 		if !hmac.Equal(patchMAC, patch.GetPatchMAC()) {
-			proc.Log.Warnf("failed to verify patch v%d: %v", version, ErrMismatchingPatchMAC)
+			proc.Log.Warnf("failed to verify patch v%d with key %X: %v", version, patch.GetKeyID().GetID(), ErrMismatchingPatchMAC)
 			// Bypass verification failure
 			// err = fmt.Errorf("failed to verify patch v%d: %w", version, ErrMismatchingPatchMAC)
 			// return

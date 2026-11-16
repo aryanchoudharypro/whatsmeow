@@ -389,7 +389,7 @@ func NewClient(deviceStore *store.Device, log waLog.Logger) *Client {
 	cli.paired.Store(deviceStore.ID != nil)
 	cli.nodeHandlers = map[string]nodeHandler{
 		"message":      cli.handleEncryptedMessage,
-		"status":       cli.handleStatusStanza,
+		"status":       cli.handleEncryptedMessage,
 		"appdata":      cli.handleEncryptedMessage,
 		"receipt":      cli.handleReceipt,
 		"call":         cli.handleCallEvent,
@@ -566,6 +566,13 @@ func (cli *Client) getUserAgent() string {
 		return cli.MessengerConfig.UserAgent
 	}
 	return cli.UserAgent
+}
+
+func (cli *Client) getMediaOrigin() string {
+	if cli.MessengerConfig != nil {
+		return cli.MessengerConfig.BaseURL
+	}
+	return socket.Origin
 }
 
 func (cli *Client) WaitForConnection(timeout time.Duration) bool {
@@ -1102,6 +1109,10 @@ Loop:
 		select {
 		case node := <-queue:
 			if connCtx.Err() != nil {
+				if node.Tag == "stream:error" {
+					cli.Log.Debugf("Handling stream:error node in handler queue loop after context cancellation")
+					cli.handleStreamError(evtCtx, node)
+				}
 				cli.Log.Debugf("Closing handler queue loop before node handling")
 				return
 			}

@@ -78,6 +78,7 @@ const (
 	BotMetricsEntryPoint_CONTACTS_TAB                        BotMetricsEntryPoint = 57
 	BotMetricsEntryPoint_NEW_3P_AGENT_CREATION               BotMetricsEntryPoint = 58
 	BotMetricsEntryPoint_SHARE                               BotMetricsEntryPoint = 59
+	BotMetricsEntryPoint_BIRTHDAY_BANNER                     BotMetricsEntryPoint = 60
 )
 
 // Enum value maps for BotMetricsEntryPoint.
@@ -134,6 +135,7 @@ var (
 		57: "CONTACTS_TAB",
 		58: "NEW_3P_AGENT_CREATION",
 		59: "SHARE",
+		60: "BIRTHDAY_BANNER",
 	}
 	BotMetricsEntryPoint_value = map[string]int32{
 		"UNDEFINED_ENTRY_POINT":               0,
@@ -187,6 +189,7 @@ var (
 		"CONTACTS_TAB":                        57,
 		"NEW_3P_AGENT_CREATION":               58,
 		"SHARE":                               59,
+		"BIRTHDAY_BANNER":                     60,
 	}
 )
 
@@ -1363,6 +1366,11 @@ const (
 	BotCapabilityMetadata_AI_STUDY_QUIZ_ENABLED                                  BotCapabilityMetadata_BotCapabilityType = 82
 	BotCapabilityMetadata_HATCH_CVM_ENABLED                                      BotCapabilityMetadata_BotCapabilityType = 83
 	BotCapabilityMetadata_RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED BotCapabilityMetadata_BotCapabilityType = 84
+	BotCapabilityMetadata_AI_MUSE_JARVIS_EXTENDED_CARDS_ENABLED                  BotCapabilityMetadata_BotCapabilityType = 85
+	BotCapabilityMetadata_AI_INTERJECTIONS_ENABLED                               BotCapabilityMetadata_BotCapabilityType = 86
+	BotCapabilityMetadata_AI_RICH_RESPONSE_READ_ALOUD_ENABLED                    BotCapabilityMetadata_BotCapabilityType = 87
+	BotCapabilityMetadata_AI_RICH_RESPONSE_ITEM_LISTS_ENABLED                    BotCapabilityMetadata_BotCapabilityType = 88
+	BotCapabilityMetadata_RICH_RESPONSE_SIDE_BY_SIDE_BUFFER_BOTH                 BotCapabilityMetadata_BotCapabilityType = 89
 )
 
 // Enum value maps for BotCapabilityMetadata_BotCapabilityType.
@@ -1453,6 +1461,11 @@ var (
 		82: "AI_STUDY_QUIZ_ENABLED",
 		83: "HATCH_CVM_ENABLED",
 		84: "RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED",
+		85: "AI_MUSE_JARVIS_EXTENDED_CARDS_ENABLED",
+		86: "AI_INTERJECTIONS_ENABLED",
+		87: "AI_RICH_RESPONSE_READ_ALOUD_ENABLED",
+		88: "AI_RICH_RESPONSE_ITEM_LISTS_ENABLED",
+		89: "RICH_RESPONSE_SIDE_BY_SIDE_BUFFER_BOTH",
 	}
 	BotCapabilityMetadata_BotCapabilityType_value = map[string]int32{
 		"UNKNOWN":                                                0,
@@ -1540,6 +1553,11 @@ var (
 		"AI_STUDY_QUIZ_ENABLED":                                  82,
 		"HATCH_CVM_ENABLED":                                      83,
 		"RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED": 84,
+		"AI_MUSE_JARVIS_EXTENDED_CARDS_ENABLED":                  85,
+		"AI_INTERJECTIONS_ENABLED":                               86,
+		"AI_RICH_RESPONSE_READ_ALOUD_ENABLED":                    87,
+		"AI_RICH_RESPONSE_ITEM_LISTS_ENABLED":                    88,
+		"RICH_RESPONSE_SIDE_BY_SIDE_BUFFER_BOTH":                 89,
 	}
 )
 
@@ -8024,9 +8042,9 @@ const file_waAICommon_WAWebProtobufsAICommon_proto_rawDesc = "" +
 	"\aUNKNOWN\x10\x00\x12\v\n" +
 	"\aPLANNED\x10\x01\x12\r\n" +
 	"\tEXECUTING\x10\x02\x12\f\n" +
-	"\bFINISHED\x10\x03\"\x84\x18\n" +
+	"\bFINISHED\x10\x03\"\xcb\x19\n" +
 	"\x15BotCapabilityMetadata\x12c\n" +
-	"\fcapabilities\x18\x01 \x03(\x0e2?.WAWebProtobufsAICommon.BotCapabilityMetadata.BotCapabilityTypeR\fcapabilities\"\x85\x17\n" +
+	"\fcapabilities\x18\x01 \x03(\x0e2?.WAWebProtobufsAICommon.BotCapabilityMetadata.BotCapabilityTypeR\fcapabilities\"\xcc\x18\n" +
 	"\x11BotCapabilityType\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\x16\n" +
 	"\x12PROGRESS_INDICATOR\x10\x01\x12\x19\n" +
@@ -8114,7 +8132,12 @@ const file_waAICommon_WAWebProtobufsAICommon_proto_rawDesc = "" +
 	"\x1dAI_MUSE_JARVIS_SCHEMA_ENABLED\x10Q\x12\x19\n" +
 	"\x15AI_STUDY_QUIZ_ENABLED\x10R\x12\x15\n" +
 	"\x11HATCH_CVM_ENABLED\x10S\x12:\n" +
-	"6RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED\x10T\"\xd8\x01\n" +
+	"6RICH_RESPONSE_SOCIAL_ENTITY_PREFETCH_SCHEDULER_ENABLED\x10T\x12)\n" +
+	"%AI_MUSE_JARVIS_EXTENDED_CARDS_ENABLED\x10U\x12\x1c\n" +
+	"\x18AI_INTERJECTIONS_ENABLED\x10V\x12'\n" +
+	"#AI_RICH_RESPONSE_READ_ALOUD_ENABLED\x10W\x12'\n" +
+	"#AI_RICH_RESPONSE_ITEM_LISTS_ENABLED\x10X\x12*\n" +
+	"&RICH_RESPONSE_SIDE_BY_SIDE_BUFFER_BOTH\x10Y\"\xd8\x01\n" +
 	"\x18BotModeSelectionMetadata\x12Y\n" +
 	"\x04mode\x18\x01 \x03(\x0e2E.WAWebProtobufsAICommon.BotModeSelectionMetadata.BotUserSelectionModeR\x04mode\x12\"\n" +
 	"\foverrideMode\x18\x02 \x03(\rR\foverrideMode\"=\n" +
@@ -8537,7 +8560,7 @@ const file_waAICommon_WAWebProtobufsAICommon_proto_rawDesc = "" +
 	"\fiptcMetadata\x18\x02 \x01(\v2-.WAWebProtobufsAICommon.AIProvenance.MetadataR\fiptcMetadata\x1a`\n" +
 	"\bMetadata\x12*\n" +
 	"\x10createdWithGenAi\x18\x01 \x01(\bR\x10createdWithGenAi\x12(\n" +
-	"\x0feditedWithGenAi\x18\x02 \x01(\bR\x0feditedWithGenAi*\xc6\n" +
+	"\x0feditedWithGenAi\x18\x02 \x01(\bR\x0feditedWithGenAi*\xdb\n" +
 	"\n" +
 	"\x14BotMetricsEntryPoint\x12\x19\n" +
 	"\x15UNDEFINED_ENTRY_POINT\x10\x00\x12\v\n" +
@@ -8592,7 +8615,8 @@ const file_waAICommon_WAWebProtobufsAICommon_proto_rawDesc = "" +
 	"\rNEW_CHAT_LIST\x108\x12\x10\n" +
 	"\fCONTACTS_TAB\x109\x12\x19\n" +
 	"\x15NEW_3P_AGENT_CREATION\x10:\x12\t\n" +
-	"\x05SHARE\x10;*\xa2\x01\n" +
+	"\x05SHARE\x10;\x12\x13\n" +
+	"\x0fBIRTHDAY_BANNER\x10<*\xa2\x01\n" +
 	"\x1aBotMetricsThreadEntryPoint\x12\x11\n" +
 	"\rAI_TAB_THREAD\x10\x01\x12\x12\n" +
 	"\x0eAI_HOME_THREAD\x10\x02\x12 \n" +

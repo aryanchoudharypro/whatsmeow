@@ -70,6 +70,7 @@ func (cli *Client) handleEncryptedMessage(ctx context.Context, node *waBinary.No
 	if len(info.PushName) > 0 && info.PushName != "-" && (cli.MessengerConfig == nil || info.PushName != "username") {
 		go cli.updatePushName(ctx, info.Sender, info.SenderAlt, info, info.PushName)
 	}
+	info.StanzaTag = node.Tag
 	if info.Sender.Server == types.NewsletterServer {
 		var cancelled bool
 		defer cli.maybeDeferredAck(ctx, node)(&cancelled)
@@ -77,34 +78,6 @@ func (cli *Client) handleEncryptedMessage(ctx context.Context, node *waBinary.No
 	} else {
 		cli.decryptMessages(ctx, info, node)
 	}
-}
-
-// handleStatusStanza handles a <status> stanza the way WA Web does: one from a
-// channel is a plaintext newsletter status, and every other one (a contact's or
-// a group's status) is an encrypted message like a <message> stanza.
-func (cli *Client) handleStatusStanza(ctx context.Context, node *waBinary.Node) {
-	if from, ok := node.Attrs["from"].(types.JID); ok && from.Server == types.NewsletterServer {
-		cli.handleUnencryptedMessage(ctx, node)
-		return
-	}
-	cli.handleEncryptedMessage(ctx, node)
-}
-
-func (cli *Client) handleUnencryptedMessage(ctx context.Context, node *waBinary.Node) {
-	info, err := cli.parseMessageInfo(node)
-	if err != nil {
-		cli.Log.Warnf("Failed to parse message: %v", err)
-		cli.sendAck(ctx, node, NackParsingError)
-		return
-	}
-	if info.Sender.Server != types.NewsletterServer {
-		cli.sendAck(ctx, node, 0)
-		return
-	}
-	info.IsNewsletterStatus = true
-	var cancelled bool
-	defer cli.maybeDeferredAck(ctx, node)(&cancelled)
-	cancelled = cli.handlePlaintextMessage(ctx, info, node)
 }
 
 func (cli *Client) parseMessageSource(node *waBinary.Node, requireParticipant bool) (source types.MessageSource, err error) {

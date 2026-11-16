@@ -1339,32 +1339,51 @@ func (cli *Client) updateGroupParticipantCache(evt *events.GroupInfo) {
 	}
 	cli.groupCacheLock.Lock()
 	defer cli.groupCacheLock.Unlock()
-	cached, ok := cli.groupCache.Get(evt.JID)
+	origCache, ok := cli.groupCache.Get(evt.JID)
 	if !ok {
 		return
 	}
-	// The entry is changed in place; save it once it's done.
-	defer cli.groupCache.Set(evt.JID, cached)
+	cached := *origCache
+	membersCloned := false
+	modifyMembers := func() {
+		if !membersCloned {
+			membersCloned = true
+			cached.Members = slices.Clone(cached.Members)
+		}
+	}
+	adminsCloned := false
+	modifyAdmins := func() {
+		if !adminsCloned {
+			adminsCloned = true
+			cached.Admins = slices.Clone(cached.Admins)
+		}
+	}
 	if evt.Announce != nil {
 		cached.ReadOnly = evt.Announce.IsAnnounce
 	}
 	for _, jid := range evt.Join {
+		modifyMembers()
 		if !slices.Contains(cached.Members, jid) {
 			cached.Members = append(cached.Members, jid)
 		}
 	}
 	for _, jid := range evt.Leave {
+		modifyMembers()
+		modifyAdmins()
 		cached.Members = exslices.FastDeleteItem(cached.Members, jid)
 		cached.Admins = exslices.FastDeleteItem(cached.Admins, jid)
 	}
 	for _, jid := range evt.Promote {
 		if !slices.Contains(cached.Admins, jid) {
+			modifyAdmins()
 			cached.Admins = append(cached.Admins, jid)
 		}
 	}
 	for _, jid := range evt.Demote {
+		modifyAdmins()
 		cached.Admins = exslices.FastDeleteItem(cached.Admins, jid)
 	}
+	cli.groupCache.Set(evt.JID, &cached)
 }
 
 func (cli *Client) parseGroupNotification(node *waBinary.Node) (any, []store.LIDMapping, []store.RedactedPhoneEntry, error) {

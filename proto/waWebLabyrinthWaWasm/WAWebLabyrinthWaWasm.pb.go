@@ -79,7 +79,7 @@ type EncryptMessageInput struct {
 	EpochRootKey        []byte                 `protobuf:"bytes,1,req,name=epochRootKey" json:"epochRootKey,omitempty"`
 	MailboxRootKey      []byte                 `protobuf:"bytes,2,req,name=mailboxRootKey" json:"mailboxRootKey,omitempty"`
 	OrfClientState      []byte                 `protobuf:"bytes,3,req,name=orfClientState" json:"orfClientState,omitempty"`
-	EpochAnonID         []byte                 `protobuf:"bytes,4,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID         *int32                 `protobuf:"varint,4,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	EpochID             *uint64                `protobuf:"varint,5,req,name=epochID" json:"epochID,omitempty"`
 	ThreadID            *string                `protobuf:"bytes,6,req,name=threadID" json:"threadID,omitempty"`
 	WaCanonicalUserFbid *uint64                `protobuf:"varint,7,req,name=waCanonicalUserFbid" json:"waCanonicalUserFbid,omitempty"`
@@ -142,11 +142,11 @@ func (x *EncryptMessageInput) GetOrfClientState() []byte {
 	return nil
 }
 
-func (x *EncryptMessageInput) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *EncryptMessageInput) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *EncryptMessageInput) GetEpochID() uint64 {
@@ -201,7 +201,7 @@ func (x *EncryptMessageInput) GetStanzaID() string {
 type DecryptMessageInput struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	EpochRootKey      []byte                 `protobuf:"bytes,1,req,name=epochRootKey" json:"epochRootKey,omitempty"`
-	EpochAnonID       []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID       *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	ThreadID          *string                `protobuf:"bytes,3,req,name=threadID" json:"threadID,omitempty"`
 	EncryptionVersion *int32                 `protobuf:"varint,4,req,name=encryptionVersion" json:"encryptionVersion,omitempty"`
 	Ciphertext        []byte                 `protobuf:"bytes,5,req,name=ciphertext" json:"ciphertext,omitempty"`
@@ -246,11 +246,11 @@ func (x *DecryptMessageInput) GetEpochRootKey() []byte {
 	return nil
 }
 
-func (x *DecryptMessageInput) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *DecryptMessageInput) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *DecryptMessageInput) GetThreadID() string {
@@ -329,7 +329,7 @@ func (x *OrfThreadIdInput) GetThreadID() string {
 type DeriveMessageKeyInput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EpochRootKey  []byte                 `protobuf:"bytes,1,req,name=epochRootKey" json:"epochRootKey,omitempty"`
-	EpochAnonID   []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID   *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	ThreadID      *string                `protobuf:"bytes,3,req,name=threadID" json:"threadID,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -372,11 +372,11 @@ func (x *DeriveMessageKeyInput) GetEpochRootKey() []byte {
 	return nil
 }
 
-func (x *DeriveMessageKeyInput) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *DeriveMessageKeyInput) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *DeriveMessageKeyInput) GetThreadID() string {
@@ -441,7 +441,7 @@ func (x *DeriveVirtualDeviceIdInput) GetUserID() uint64 {
 type AddDeviceSyncEpochInput struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	EpochID           *uint64                `protobuf:"varint,1,req,name=epochID" json:"epochID,omitempty"`
-	EpochAnonID       []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID       *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	EncryptedEpochKey []byte                 `protobuf:"bytes,3,opt,name=encryptedEpochKey" json:"encryptedEpochKey,omitempty"`
 	SenderAuthPubKey  []byte                 `protobuf:"bytes,4,req,name=senderAuthPubKey" json:"senderAuthPubKey,omitempty"`
 	NextEpochID       *uint64                `protobuf:"varint,5,opt,name=nextEpochID" json:"nextEpochID,omitempty"`
@@ -486,11 +486,11 @@ func (x *AddDeviceSyncEpochInput) GetEpochID() uint64 {
 	return 0
 }
 
-func (x *AddDeviceSyncEpochInput) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *AddDeviceSyncEpochInput) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *AddDeviceSyncEpochInput) GetEncryptedEpochKey() []byte {
@@ -916,8 +916,7 @@ func (x *VirtualDeviceOutput) GetEncryptedSecretValues() *EncryptedSecretValuesO
 
 type Epoch0Output struct {
 	state                   protoimpl.MessageState `protogen:"open.v1"`
-	EpochFbid               *uint64                `protobuf:"varint,1,req,name=epochFbid" json:"epochFbid,omitempty"`
-	EpochAnonID             []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID             *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	EpochRootKeyFingerprint []byte                 `protobuf:"bytes,6,req,name=epochRootKeyFingerprint" json:"epochRootKeyFingerprint,omitempty"`
 	EpochRootKey            []byte                 `protobuf:"bytes,7,req,name=epochRootKey" json:"epochRootKey,omitempty"`
 	unknownFields           protoimpl.UnknownFields
@@ -954,18 +953,11 @@ func (*Epoch0Output) Descriptor() ([]byte, []int) {
 	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{11}
 }
 
-func (x *Epoch0Output) GetEpochFbid() uint64 {
-	if x != nil && x.EpochFbid != nil {
-		return *x.EpochFbid
+func (x *Epoch0Output) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
 	return 0
-}
-
-func (x *Epoch0Output) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
-	}
-	return nil
 }
 
 func (x *Epoch0Output) GetEpochRootKeyFingerprint() []byte {
@@ -1889,7 +1881,7 @@ func (x *AddDeviceKeysOutput) GetOrfClientState() []byte {
 type EpochKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerEpochID *uint64                `protobuf:"varint,1,req,name=serverEpochID" json:"serverEpochID,omitempty"`
-	EpochAnonID   []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID   *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	EpochRootKey  []byte                 `protobuf:"bytes,3,req,name=epochRootKey" json:"epochRootKey,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1932,11 +1924,11 @@ func (x *EpochKey) GetServerEpochID() uint64 {
 	return 0
 }
 
-func (x *EpochKey) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *EpochKey) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *EpochKey) GetEpochRootKey() []byte {
@@ -2215,7 +2207,7 @@ func (x *RotateEpochMemberInput) GetEpochStoragePublicKeySig() []byte {
 type RotateEpochInput struct {
 	state                      protoimpl.MessageState    `protogen:"open.v1"`
 	CurrentEpochRootKey        []byte                    `protobuf:"bytes,1,req,name=currentEpochRootKey" json:"currentEpochRootKey,omitempty"`
-	CurrentEpochAnonID         []byte                    `protobuf:"bytes,2,req,name=currentEpochAnonID" json:"currentEpochAnonID,omitempty"`
+	CurrentEpochAnonID         *int32                    `protobuf:"varint,2,req,name=currentEpochAnonID" json:"currentEpochAnonID,omitempty"`
 	CurrentEpochFbid           *uint64                   `protobuf:"varint,3,req,name=currentEpochFbid" json:"currentEpochFbid,omitempty"`
 	EpochStorageAuthPrivateKey []byte                    `protobuf:"bytes,4,req,name=epochStorageAuthPrivateKey" json:"epochStorageAuthPrivateKey,omitempty"`
 	Members                    []*RotateEpochMemberInput `protobuf:"bytes,5,rep,name=members" json:"members,omitempty"`
@@ -2260,11 +2252,11 @@ func (x *RotateEpochInput) GetCurrentEpochRootKey() []byte {
 	return nil
 }
 
-func (x *RotateEpochInput) GetCurrentEpochAnonID() []byte {
-	if x != nil {
-		return x.CurrentEpochAnonID
+func (x *RotateEpochInput) GetCurrentEpochAnonID() int32 {
+	if x != nil && x.CurrentEpochAnonID != nil {
+		return *x.CurrentEpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *RotateEpochInput) GetCurrentEpochFbid() uint64 {
@@ -2493,8 +2485,7 @@ func (*RotateEpochOutput_Error) isRotateEpochOutput_Result() {}
 type RotateEpochSuccess struct {
 	state                   protoimpl.MessageState   `protogen:"open.v1"`
 	NewEpochRootKey         []byte                   `protobuf:"bytes,1,req,name=newEpochRootKey" json:"newEpochRootKey,omitempty"`
-	NewEpochAnonID          *uint64                  `protobuf:"varint,2,req,name=newEpochAnonID" json:"newEpochAnonID,omitempty"`
-	EpochAnonID             []byte                   `protobuf:"bytes,3,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	NewEpochAnonID          *int32                   `protobuf:"varint,2,req,name=newEpochAnonID" json:"newEpochAnonID,omitempty"`
 	BackwardEdge            *BackwardEdge            `protobuf:"bytes,4,req,name=backwardEdge" json:"backwardEdge,omitempty"`
 	MemberEdges             []*RotateEpochMemberEdge `protobuf:"bytes,5,rep,name=memberEdges" json:"memberEdges,omitempty"`
 	EpochRootKeyFingerprint []byte                   `protobuf:"bytes,6,req,name=epochRootKeyFingerprint" json:"epochRootKeyFingerprint,omitempty"`
@@ -2539,18 +2530,11 @@ func (x *RotateEpochSuccess) GetNewEpochRootKey() []byte {
 	return nil
 }
 
-func (x *RotateEpochSuccess) GetNewEpochAnonID() uint64 {
+func (x *RotateEpochSuccess) GetNewEpochAnonID() int32 {
 	if x != nil && x.NewEpochAnonID != nil {
 		return *x.NewEpochAnonID
 	}
 	return 0
-}
-
-func (x *RotateEpochSuccess) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
-	}
-	return nil
 }
 
 func (x *RotateEpochSuccess) GetBackwardEdge() *BackwardEdge {
@@ -2755,7 +2739,7 @@ func (x *ComputeClientSealTokenSuccess) GetClientSealToken() []byte {
 type SealThreadIdInput struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	EpochRootKey  []byte                 `protobuf:"bytes,1,req,name=epochRootKey" json:"epochRootKey,omitempty"`
-	EpochAnonID   []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID   *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	BackupID      *uint64                `protobuf:"varint,3,req,name=backupID" json:"backupID,omitempty"`
 	ThreadID      *string                `protobuf:"bytes,4,req,name=threadID" json:"threadID,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -2799,11 +2783,11 @@ func (x *SealThreadIdInput) GetEpochRootKey() []byte {
 	return nil
 }
 
-func (x *SealThreadIdInput) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *SealThreadIdInput) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 func (x *SealThreadIdInput) GetBackupID() uint64 {
@@ -3091,7 +3075,7 @@ func (*OpenSealedThreadIdOutput_Error) isOpenSealedThreadIdOutput_Result() {}
 type OpenSealedThreadIdSuccess struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	ThreadID        *string                `protobuf:"bytes,1,req,name=threadID" json:"threadID,omitempty"`
-	SealEpochAnonID *uint32                `protobuf:"varint,2,req,name=sealEpochAnonID" json:"sealEpochAnonID,omitempty"`
+	SealEpochAnonID *int32                 `protobuf:"varint,2,req,name=sealEpochAnonID" json:"sealEpochAnonID,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3133,7 +3117,7 @@ func (x *OpenSealedThreadIdSuccess) GetThreadID() string {
 	return ""
 }
 
-func (x *OpenSealedThreadIdSuccess) GetSealEpochAnonID() uint32 {
+func (x *OpenSealedThreadIdSuccess) GetSealEpochAnonID() int32 {
 	if x != nil && x.SealEpochAnonID != nil {
 		return *x.SealEpochAnonID
 	}
@@ -3143,7 +3127,7 @@ func (x *OpenSealedThreadIdSuccess) GetSealEpochAnonID() uint32 {
 type EpochIds struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServerEpochID *uint64                `protobuf:"varint,1,req,name=serverEpochID" json:"serverEpochID,omitempty"`
-	EpochAnonID   []byte                 `protobuf:"bytes,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
+	EpochAnonID   *int32                 `protobuf:"varint,2,req,name=epochAnonID" json:"epochAnonID,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3185,11 +3169,11 @@ func (x *EpochIds) GetServerEpochID() uint64 {
 	return 0
 }
 
-func (x *EpochIds) GetEpochAnonID() []byte {
-	if x != nil {
-		return x.EpochAnonID
+func (x *EpochIds) GetEpochAnonID() int32 {
+	if x != nil && x.EpochAnonID != nil {
+		return *x.EpochAnonID
 	}
-	return nil
+	return 0
 }
 
 type ForwardEdgeInput struct {
@@ -3724,6 +3708,338 @@ func (x *PrepareAddPeerDeviceSuccess) GetCompanionDeviceBinding() []byte {
 	return nil
 }
 
+type CompanionTestMessageThreadIdInput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompanionTestMessageThreadIdInput) Reset() {
+	*x = CompanionTestMessageThreadIdInput{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompanionTestMessageThreadIdInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompanionTestMessageThreadIdInput) ProtoMessage() {}
+
+func (x *CompanionTestMessageThreadIdInput) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompanionTestMessageThreadIdInput.ProtoReflect.Descriptor instead.
+func (*CompanionTestMessageThreadIdInput) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{52}
+}
+
+type CompanionTestMessageThreadIdOutput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*CompanionTestMessageThreadIdOutput_Success
+	//	*CompanionTestMessageThreadIdOutput_Error
+	Result        isCompanionTestMessageThreadIdOutput_Result `protobuf_oneof:"result"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompanionTestMessageThreadIdOutput) Reset() {
+	*x = CompanionTestMessageThreadIdOutput{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompanionTestMessageThreadIdOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompanionTestMessageThreadIdOutput) ProtoMessage() {}
+
+func (x *CompanionTestMessageThreadIdOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompanionTestMessageThreadIdOutput.ProtoReflect.Descriptor instead.
+func (*CompanionTestMessageThreadIdOutput) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *CompanionTestMessageThreadIdOutput) GetResult() isCompanionTestMessageThreadIdOutput_Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *CompanionTestMessageThreadIdOutput) GetSuccess() *CompanionTestMessageThreadIdSuccess {
+	if x != nil {
+		if x, ok := x.Result.(*CompanionTestMessageThreadIdOutput_Success); ok {
+			return x.Success
+		}
+	}
+	return nil
+}
+
+func (x *CompanionTestMessageThreadIdOutput) GetError() string {
+	if x != nil {
+		if x, ok := x.Result.(*CompanionTestMessageThreadIdOutput_Error); ok {
+			return x.Error
+		}
+	}
+	return ""
+}
+
+type isCompanionTestMessageThreadIdOutput_Result interface {
+	isCompanionTestMessageThreadIdOutput_Result()
+}
+
+type CompanionTestMessageThreadIdOutput_Success struct {
+	Success *CompanionTestMessageThreadIdSuccess `protobuf:"bytes,1,opt,name=success,oneof"`
+}
+
+type CompanionTestMessageThreadIdOutput_Error struct {
+	Error string `protobuf:"bytes,2,opt,name=error,oneof"`
+}
+
+func (*CompanionTestMessageThreadIdOutput_Success) isCompanionTestMessageThreadIdOutput_Result() {}
+
+func (*CompanionTestMessageThreadIdOutput_Error) isCompanionTestMessageThreadIdOutput_Result() {}
+
+type CompanionTestMessageThreadIdSuccess struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ThreadID      *string                `protobuf:"bytes,1,req,name=threadID" json:"threadID,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompanionTestMessageThreadIdSuccess) Reset() {
+	*x = CompanionTestMessageThreadIdSuccess{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompanionTestMessageThreadIdSuccess) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompanionTestMessageThreadIdSuccess) ProtoMessage() {}
+
+func (x *CompanionTestMessageThreadIdSuccess) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompanionTestMessageThreadIdSuccess.ProtoReflect.Descriptor instead.
+func (*CompanionTestMessageThreadIdSuccess) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *CompanionTestMessageThreadIdSuccess) GetThreadID() string {
+	if x != nil && x.ThreadID != nil {
+		return *x.ThreadID
+	}
+	return ""
+}
+
+type ParseCompanionTestMessageInput struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plaintext     []byte                 `protobuf:"bytes,1,req,name=plaintext" json:"plaintext,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ParseCompanionTestMessageInput) Reset() {
+	*x = ParseCompanionTestMessageInput{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ParseCompanionTestMessageInput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ParseCompanionTestMessageInput) ProtoMessage() {}
+
+func (x *ParseCompanionTestMessageInput) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ParseCompanionTestMessageInput.ProtoReflect.Descriptor instead.
+func (*ParseCompanionTestMessageInput) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *ParseCompanionTestMessageInput) GetPlaintext() []byte {
+	if x != nil {
+		return x.Plaintext
+	}
+	return nil
+}
+
+type ParseCompanionTestMessageOutput struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Result:
+	//
+	//	*ParseCompanionTestMessageOutput_Success
+	//	*ParseCompanionTestMessageOutput_Error
+	Result        isParseCompanionTestMessageOutput_Result `protobuf_oneof:"result"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ParseCompanionTestMessageOutput) Reset() {
+	*x = ParseCompanionTestMessageOutput{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ParseCompanionTestMessageOutput) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ParseCompanionTestMessageOutput) ProtoMessage() {}
+
+func (x *ParseCompanionTestMessageOutput) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ParseCompanionTestMessageOutput.ProtoReflect.Descriptor instead.
+func (*ParseCompanionTestMessageOutput) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *ParseCompanionTestMessageOutput) GetResult() isParseCompanionTestMessageOutput_Result {
+	if x != nil {
+		return x.Result
+	}
+	return nil
+}
+
+func (x *ParseCompanionTestMessageOutput) GetSuccess() *ParseCompanionTestMessageSuccess {
+	if x != nil {
+		if x, ok := x.Result.(*ParseCompanionTestMessageOutput_Success); ok {
+			return x.Success
+		}
+	}
+	return nil
+}
+
+func (x *ParseCompanionTestMessageOutput) GetError() string {
+	if x != nil {
+		if x, ok := x.Result.(*ParseCompanionTestMessageOutput_Error); ok {
+			return x.Error
+		}
+	}
+	return ""
+}
+
+type isParseCompanionTestMessageOutput_Result interface {
+	isParseCompanionTestMessageOutput_Result()
+}
+
+type ParseCompanionTestMessageOutput_Success struct {
+	Success *ParseCompanionTestMessageSuccess `protobuf:"bytes,1,opt,name=success,oneof"`
+}
+
+type ParseCompanionTestMessageOutput_Error struct {
+	Error string `protobuf:"bytes,2,opt,name=error,oneof"`
+}
+
+func (*ParseCompanionTestMessageOutput_Success) isParseCompanionTestMessageOutput_Result() {}
+
+func (*ParseCompanionTestMessageOutput_Error) isParseCompanionTestMessageOutput_Result() {}
+
+type ParseCompanionTestMessageSuccess struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CreatedAtMS   *uint64                `protobuf:"varint,1,req,name=createdAtMS" json:"createdAtMS,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ParseCompanionTestMessageSuccess) Reset() {
+	*x = ParseCompanionTestMessageSuccess{}
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ParseCompanionTestMessageSuccess) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ParseCompanionTestMessageSuccess) ProtoMessage() {}
+
+func (x *ParseCompanionTestMessageSuccess) ProtoReflect() protoreflect.Message {
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ParseCompanionTestMessageSuccess.ProtoReflect.Descriptor instead.
+func (*ParseCompanionTestMessageSuccess) Descriptor() ([]byte, []int) {
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *ParseCompanionTestMessageSuccess) GetCreatedAtMS() uint64 {
+	if x != nil && x.CreatedAtMS != nil {
+		return *x.CreatedAtMS
+	}
+	return 0
+}
+
 type LabyrinthWaCommand struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to CommandInput:
@@ -3741,6 +4057,8 @@ type LabyrinthWaCommand struct {
 	//	*LabyrinthWaCommand_DeriveEpochsInput
 	//	*LabyrinthWaCommand_SealThreadIDInput
 	//	*LabyrinthWaCommand_PrepareAddPeerDeviceInput
+	//	*LabyrinthWaCommand_CompanionTestMessageThreadIDInput
+	//	*LabyrinthWaCommand_ParseCompanionTestMessageInput
 	CommandInput  isLabyrinthWaCommand_CommandInput `protobuf_oneof:"commandInput"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3748,7 +4066,7 @@ type LabyrinthWaCommand struct {
 
 func (x *LabyrinthWaCommand) Reset() {
 	*x = LabyrinthWaCommand{}
-	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[52]
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3760,7 +4078,7 @@ func (x *LabyrinthWaCommand) String() string {
 func (*LabyrinthWaCommand) ProtoMessage() {}
 
 func (x *LabyrinthWaCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[52]
+	mi := &file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3773,7 +4091,7 @@ func (x *LabyrinthWaCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LabyrinthWaCommand.ProtoReflect.Descriptor instead.
 func (*LabyrinthWaCommand) Descriptor() ([]byte, []int) {
-	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{52}
+	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *LabyrinthWaCommand) GetCommandInput() isLabyrinthWaCommand_CommandInput {
@@ -3900,6 +4218,24 @@ func (x *LabyrinthWaCommand) GetPrepareAddPeerDeviceInput() *PrepareAddPeerDevic
 	return nil
 }
 
+func (x *LabyrinthWaCommand) GetCompanionTestMessageThreadIDInput() *CompanionTestMessageThreadIdInput {
+	if x != nil {
+		if x, ok := x.CommandInput.(*LabyrinthWaCommand_CompanionTestMessageThreadIDInput); ok {
+			return x.CompanionTestMessageThreadIDInput
+		}
+	}
+	return nil
+}
+
+func (x *LabyrinthWaCommand) GetParseCompanionTestMessageInput() *ParseCompanionTestMessageInput {
+	if x != nil {
+		if x, ok := x.CommandInput.(*LabyrinthWaCommand_ParseCompanionTestMessageInput); ok {
+			return x.ParseCompanionTestMessageInput
+		}
+	}
+	return nil
+}
+
 type isLabyrinthWaCommand_CommandInput interface {
 	isLabyrinthWaCommand_CommandInput()
 }
@@ -3956,6 +4292,14 @@ type LabyrinthWaCommand_PrepareAddPeerDeviceInput struct {
 	PrepareAddPeerDeviceInput *PrepareAddPeerDeviceInput `protobuf:"bytes,13,opt,name=prepareAddPeerDeviceInput,oneof"`
 }
 
+type LabyrinthWaCommand_CompanionTestMessageThreadIDInput struct {
+	CompanionTestMessageThreadIDInput *CompanionTestMessageThreadIdInput `protobuf:"bytes,14,opt,name=companionTestMessageThreadIDInput,oneof"`
+}
+
+type LabyrinthWaCommand_ParseCompanionTestMessageInput struct {
+	ParseCompanionTestMessageInput *ParseCompanionTestMessageInput `protobuf:"bytes,15,opt,name=parseCompanionTestMessageInput,oneof"`
+}
+
 func (*LabyrinthWaCommand_CreateBackupInput) isLabyrinthWaCommand_CommandInput() {}
 
 func (*LabyrinthWaCommand_EncryptMessageInput) isLabyrinthWaCommand_CommandInput() {}
@@ -3982,6 +4326,10 @@ func (*LabyrinthWaCommand_SealThreadIDInput) isLabyrinthWaCommand_CommandInput()
 
 func (*LabyrinthWaCommand_PrepareAddPeerDeviceInput) isLabyrinthWaCommand_CommandInput() {}
 
+func (*LabyrinthWaCommand_CompanionTestMessageThreadIDInput) isLabyrinthWaCommand_CommandInput() {}
+
+func (*LabyrinthWaCommand_ParseCompanionTestMessageInput) isLabyrinthWaCommand_CommandInput() {}
+
 var File_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto protoreflect.FileDescriptor
 
 const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
@@ -3994,7 +4342,7 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\fepochRootKey\x18\x01 \x02(\fR\fepochRootKey\x12&\n" +
 	"\x0emailboxRootKey\x18\x02 \x02(\fR\x0emailboxRootKey\x12&\n" +
 	"\x0eorfClientState\x18\x03 \x02(\fR\x0eorfClientState\x12 \n" +
-	"\vepochAnonID\x18\x04 \x02(\fR\vepochAnonID\x12\x18\n" +
+	"\vepochAnonID\x18\x04 \x02(\x05R\vepochAnonID\x12\x18\n" +
 	"\aepochID\x18\x05 \x02(\x04R\aepochID\x12\x1a\n" +
 	"\bthreadID\x18\x06 \x02(\tR\bthreadID\x120\n" +
 	"\x13waCanonicalUserFbid\x18\a \x02(\x04R\x13waCanonicalUserFbid\x12 \n" +
@@ -4005,7 +4353,7 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\bstanzaID\x18\v \x02(\tR\bstanzaID\"\xc5\x01\n" +
 	"\x13DecryptMessageInput\x12\"\n" +
 	"\fepochRootKey\x18\x01 \x02(\fR\fepochRootKey\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x12\x1a\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x12\x1a\n" +
 	"\bthreadID\x18\x03 \x02(\tR\bthreadID\x12,\n" +
 	"\x11encryptionVersion\x18\x04 \x02(\x05R\x11encryptionVersion\x12\x1e\n" +
 	"\n" +
@@ -4016,14 +4364,14 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\bthreadID\x18\x02 \x02(\tR\bthreadID\"y\n" +
 	"\x15DeriveMessageKeyInput\x12\"\n" +
 	"\fepochRootKey\x18\x01 \x02(\fR\fepochRootKey\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x12\x1a\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x12\x1a\n" +
 	"\bthreadID\x18\x03 \x02(\tR\bthreadID\"X\n" +
 	"\x1aDeriveVirtualDeviceIdInput\x12\"\n" +
 	"\frecoveryCode\x18\x01 \x02(\tR\frecoveryCode\x12\x16\n" +
 	"\x06userID\x18\x02 \x02(\x04R\x06userID\"\xd1\x01\n" +
 	"\x17AddDeviceSyncEpochInput\x12\x18\n" +
 	"\aepochID\x18\x01 \x02(\x04R\aepochID\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x12,\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x12,\n" +
 	"\x11encryptedEpochKey\x18\x03 \x01(\fR\x11encryptedEpochKey\x12*\n" +
 	"\x10senderAuthPubKey\x18\x04 \x02(\fR\x10senderAuthPubKey\x12 \n" +
 	"\vnextEpochID\x18\x05 \x01(\x04R\vnextEpochID\"\xc2\x02\n" +
@@ -4065,10 +4413,9 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x1avdEpochStoragePublicKeySig\x18\x04 \x02(\fR\x1avdEpochStoragePublicKeySig\x12,\n" +
 	"\x11ocmfRotationToken\x18\x05 \x02(\fR\x11ocmfRotationToken\x12(\n" +
 	"\x0fdeviceEpochHmac\x18\x06 \x02(\fR\x0fdeviceEpochHmac\x12g\n" +
-	"\x15encryptedSecretValues\x18\a \x02(\v21.WAWebLabyrinthWaWasm.EncryptedSecretValuesOutputR\x15encryptedSecretValues\"\xac\x01\n" +
-	"\fEpoch0Output\x12\x1c\n" +
-	"\tepochFbid\x18\x01 \x02(\x04R\tepochFbid\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x128\n" +
+	"\x15encryptedSecretValues\x18\a \x02(\v21.WAWebLabyrinthWaWasm.EncryptedSecretValuesOutputR\x15encryptedSecretValues\"\x8e\x01\n" +
+	"\fEpoch0Output\x12 \n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x128\n" +
 	"\x17epochRootKeyFingerprint\x18\x06 \x02(\fR\x17epochRootKeyFingerprint\x12\"\n" +
 	"\fepochRootKey\x18\a \x02(\fR\fepochRootKey\"}\n" +
 	"\x12CreateBackupOutput\x12E\n" +
@@ -4126,7 +4473,7 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x0eorfClientState\x18\a \x02(\fR\x0eorfClientState\"v\n" +
 	"\bEpochKey\x12$\n" +
 	"\rserverEpochID\x18\x01 \x02(\x04R\rserverEpochID\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x12\"\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x12\"\n" +
 	"\fepochRootKey\x18\x03 \x02(\fR\fepochRootKey\"\x85\x01\n" +
 	"\x16PrepareAddDeviceOutput\x12I\n" +
 	"\asuccess\x18\x01 \x01(\v2-.WAWebLabyrinthWaWasm.PrepareAddDeviceSuccessH\x00R\asuccess\x12\x16\n" +
@@ -4152,7 +4499,7 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x18epochStoragePublicKeySig\x18\x05 \x02(\fR\x18epochStoragePublicKeySig\"\xa8\x02\n" +
 	"\x10RotateEpochInput\x120\n" +
 	"\x13currentEpochRootKey\x18\x01 \x02(\fR\x13currentEpochRootKey\x12.\n" +
-	"\x12currentEpochAnonID\x18\x02 \x02(\fR\x12currentEpochAnonID\x12*\n" +
+	"\x12currentEpochAnonID\x18\x02 \x02(\x05R\x12currentEpochAnonID\x12*\n" +
 	"\x10currentEpochFbid\x18\x03 \x02(\x04R\x10currentEpochFbid\x12>\n" +
 	"\x1aepochStorageAuthPrivateKey\x18\x04 \x02(\fR\x1aepochStorageAuthPrivateKey\x12F\n" +
 	"\amembers\x18\x05 \x03(\v2,.WAWebLabyrinthWaWasm.RotateEpochMemberInputR\amembers\"\x8b\x01\n" +
@@ -4167,11 +4514,10 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x11RotateEpochOutput\x12D\n" +
 	"\asuccess\x18\x01 \x01(\v2(.WAWebLabyrinthWaWasm.RotateEpochSuccessH\x00R\asuccess\x12\x16\n" +
 	"\x05error\x18\x02 \x01(\tH\x00R\x05errorB\b\n" +
-	"\x06result\"\xd9\x02\n" +
+	"\x06result\"\xb7\x02\n" +
 	"\x12RotateEpochSuccess\x12(\n" +
 	"\x0fnewEpochRootKey\x18\x01 \x02(\fR\x0fnewEpochRootKey\x12&\n" +
-	"\x0enewEpochAnonID\x18\x02 \x02(\x04R\x0enewEpochAnonID\x12 \n" +
-	"\vepochAnonID\x18\x03 \x02(\fR\vepochAnonID\x12F\n" +
+	"\x0enewEpochAnonID\x18\x02 \x02(\x05R\x0enewEpochAnonID\x12F\n" +
 	"\fbackwardEdge\x18\x04 \x02(\v2\".WAWebLabyrinthWaWasm.BackwardEdgeR\fbackwardEdge\x12M\n" +
 	"\vmemberEdges\x18\x05 \x03(\v2+.WAWebLabyrinthWaWasm.RotateEpochMemberEdgeR\vmemberEdges\x128\n" +
 	"\x17epochRootKeyFingerprint\x18\x06 \x02(\fR\x17epochRootKeyFingerprint\"a\n" +
@@ -4186,7 +4532,7 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x0fclientSealToken\x18\x01 \x02(\fR\x0fclientSealToken\"\x91\x01\n" +
 	"\x11SealThreadIdInput\x12\"\n" +
 	"\fepochRootKey\x18\x01 \x02(\fR\fepochRootKey\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\x12\x1a\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\x12\x1a\n" +
 	"\bbackupID\x18\x03 \x02(\x04R\bbackupID\x12\x1a\n" +
 	"\bthreadID\x18\x04 \x02(\tR\bthreadID\"}\n" +
 	"\x12SealThreadIdOutput\x12E\n" +
@@ -4205,10 +4551,10 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x06result\"a\n" +
 	"\x19OpenSealedThreadIdSuccess\x12\x1a\n" +
 	"\bthreadID\x18\x01 \x02(\tR\bthreadID\x12(\n" +
-	"\x0fsealEpochAnonID\x18\x02 \x02(\rR\x0fsealEpochAnonID\"R\n" +
+	"\x0fsealEpochAnonID\x18\x02 \x02(\x05R\x0fsealEpochAnonID\"R\n" +
 	"\bEpochIds\x12$\n" +
 	"\rserverEpochID\x18\x01 \x02(\x04R\rserverEpochID\x12 \n" +
-	"\vepochAnonID\x18\x02 \x02(\fR\vepochAnonID\"d\n" +
+	"\vepochAnonID\x18\x02 \x02(\x05R\vepochAnonID\"d\n" +
 	"\x10ForwardEdgeInput\x12*\n" +
 	"\x10encryptedEntropy\x18\x01 \x02(\fR\x10encryptedEntropy\x12$\n" +
 	"\rauthPublicKey\x18\x02 \x02(\fR\rauthPublicKey\"\xfb\x01\n" +
@@ -4241,8 +4587,22 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	"\x1bPrepareAddPeerDeviceSuccess\x12K\n" +
 	"\tenrolment\x18\x01 \x02(\v2-.WAWebLabyrinthWaWasm.PrepareAddDeviceSuccessR\tenrolment\x12\"\n" +
 	"\fserverDataID\x18\x02 \x02(\x04R\fserverDataID\x126\n" +
-	"\x16companionDeviceBinding\x18\x03 \x02(\fR\x16companionDeviceBinding\"\xaa\n" +
-	"\n" +
+	"\x16companionDeviceBinding\x18\x03 \x02(\fR\x16companionDeviceBinding\"#\n" +
+	"!CompanionTestMessageThreadIdInput\"\x9d\x01\n" +
+	"\"CompanionTestMessageThreadIdOutput\x12U\n" +
+	"\asuccess\x18\x01 \x01(\v29.WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdSuccessH\x00R\asuccess\x12\x16\n" +
+	"\x05error\x18\x02 \x01(\tH\x00R\x05errorB\b\n" +
+	"\x06result\"A\n" +
+	"#CompanionTestMessageThreadIdSuccess\x12\x1a\n" +
+	"\bthreadID\x18\x01 \x02(\tR\bthreadID\">\n" +
+	"\x1eParseCompanionTestMessageInput\x12\x1c\n" +
+	"\tplaintext\x18\x01 \x02(\fR\tplaintext\"\x97\x01\n" +
+	"\x1fParseCompanionTestMessageOutput\x12R\n" +
+	"\asuccess\x18\x01 \x01(\v26.WAWebLabyrinthWaWasm.ParseCompanionTestMessageSuccessH\x00R\asuccess\x12\x16\n" +
+	"\x05error\x18\x02 \x01(\tH\x00R\x05errorB\b\n" +
+	"\x06result\"D\n" +
+	" ParseCompanionTestMessageSuccess\x12 \n" +
+	"\vcreatedAtMS\x18\x01 \x02(\x04R\vcreatedAtMS\"\xb4\f\n" +
 	"\x12LabyrinthWaCommand\x12W\n" +
 	"\x11createBackupInput\x18\x01 \x01(\v2'.WAWebLabyrinthWaWasm.CreateBackupInputH\x00R\x11createBackupInput\x12]\n" +
 	"\x13encryptMessageInput\x18\x02 \x01(\v2).WAWebLabyrinthWaWasm.EncryptMessageInputH\x00R\x13encryptMessageInput\x12]\n" +
@@ -4257,7 +4617,9 @@ const file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc = "" +
 	" \x01(\v2-.WAWebLabyrinthWaWasm.OpenSealedThreadIdInputH\x00R\x17openSealedThreadIDInput\x12W\n" +
 	"\x11deriveEpochsInput\x18\v \x01(\v2'.WAWebLabyrinthWaWasm.DeriveEpochsInputH\x00R\x11deriveEpochsInput\x12W\n" +
 	"\x11sealThreadIDInput\x18\f \x01(\v2'.WAWebLabyrinthWaWasm.SealThreadIdInputH\x00R\x11sealThreadIDInput\x12o\n" +
-	"\x19prepareAddPeerDeviceInput\x18\r \x01(\v2/.WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInputH\x00R\x19prepareAddPeerDeviceInputB\x0e\n" +
+	"\x19prepareAddPeerDeviceInput\x18\r \x01(\v2/.WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInputH\x00R\x19prepareAddPeerDeviceInput\x12\x87\x01\n" +
+	"!companionTestMessageThreadIDInput\x18\x0e \x01(\v27.WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdInputH\x00R!companionTestMessageThreadIDInput\x12~\n" +
+	"\x1eparseCompanionTestMessageInput\x18\x0f \x01(\v24.WAWebLabyrinthWaWasm.ParseCompanionTestMessageInputH\x00R\x1eparseCompanionTestMessageInputB\x0e\n" +
 	"\fcommandInputB0Z.go.mau.fi/whatsmeow/proto/waWebLabyrinthWaWasm"
 
 var (
@@ -4272,61 +4634,67 @@ func file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescGZIP() []byte {
 	return file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDescData
 }
 
-var file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
 var file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_goTypes = []any{
-	(*CreateBackupInput)(nil),             // 0: WAWebLabyrinthWaWasm.CreateBackupInput
-	(*EncryptMessageInput)(nil),           // 1: WAWebLabyrinthWaWasm.EncryptMessageInput
-	(*DecryptMessageInput)(nil),           // 2: WAWebLabyrinthWaWasm.DecryptMessageInput
-	(*OrfThreadIdInput)(nil),              // 3: WAWebLabyrinthWaWasm.OrfThreadIdInput
-	(*DeriveMessageKeyInput)(nil),         // 4: WAWebLabyrinthWaWasm.DeriveMessageKeyInput
-	(*DeriveVirtualDeviceIdInput)(nil),    // 5: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdInput
-	(*AddDeviceSyncEpochInput)(nil),       // 6: WAWebLabyrinthWaWasm.AddDeviceSyncEpochInput
-	(*PrepareAddDeviceInput)(nil),         // 7: WAWebLabyrinthWaWasm.PrepareAddDeviceInput
-	(*DeviceOutput)(nil),                  // 8: WAWebLabyrinthWaWasm.DeviceOutput
-	(*EncryptedSecretValuesOutput)(nil),   // 9: WAWebLabyrinthWaWasm.EncryptedSecretValuesOutput
-	(*VirtualDeviceOutput)(nil),           // 10: WAWebLabyrinthWaWasm.VirtualDeviceOutput
-	(*Epoch0Output)(nil),                  // 11: WAWebLabyrinthWaWasm.Epoch0Output
-	(*CreateBackupOutput)(nil),            // 12: WAWebLabyrinthWaWasm.CreateBackupOutput
-	(*CreateBackupSuccess)(nil),           // 13: WAWebLabyrinthWaWasm.CreateBackupSuccess
-	(*EncryptMessageOutput)(nil),          // 14: WAWebLabyrinthWaWasm.EncryptMessageOutput
-	(*EncryptMessageSuccess)(nil),         // 15: WAWebLabyrinthWaWasm.EncryptMessageSuccess
-	(*DecryptMessageOutput)(nil),          // 16: WAWebLabyrinthWaWasm.DecryptMessageOutput
-	(*DecryptMessageSuccess)(nil),         // 17: WAWebLabyrinthWaWasm.DecryptMessageSuccess
-	(*OrfThreadIdOutput)(nil),             // 18: WAWebLabyrinthWaWasm.OrfThreadIdOutput
-	(*OrfThreadIdSuccess)(nil),            // 19: WAWebLabyrinthWaWasm.OrfThreadIdSuccess
-	(*DeriveMessageKeyOutput)(nil),        // 20: WAWebLabyrinthWaWasm.DeriveMessageKeyOutput
-	(*DeriveMessageKeySuccess)(nil),       // 21: WAWebLabyrinthWaWasm.DeriveMessageKeySuccess
-	(*DeriveVirtualDeviceIdOutput)(nil),   // 22: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdOutput
-	(*DeriveVirtualDeviceIdSuccess)(nil),  // 23: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdSuccess
-	(*AddDeviceKeysOutput)(nil),           // 24: WAWebLabyrinthWaWasm.AddDeviceKeysOutput
-	(*EpochKey)(nil),                      // 25: WAWebLabyrinthWaWasm.EpochKey
-	(*PrepareAddDeviceOutput)(nil),        // 26: WAWebLabyrinthWaWasm.PrepareAddDeviceOutput
-	(*PrepareAddDeviceSuccess)(nil),       // 27: WAWebLabyrinthWaWasm.PrepareAddDeviceSuccess
-	(*RotateEpochMemberInput)(nil),        // 28: WAWebLabyrinthWaWasm.RotateEpochMemberInput
-	(*RotateEpochInput)(nil),              // 29: WAWebLabyrinthWaWasm.RotateEpochInput
-	(*RotateEpochMemberEdge)(nil),         // 30: WAWebLabyrinthWaWasm.RotateEpochMemberEdge
-	(*BackwardEdge)(nil),                  // 31: WAWebLabyrinthWaWasm.BackwardEdge
-	(*RotateEpochOutput)(nil),             // 32: WAWebLabyrinthWaWasm.RotateEpochOutput
-	(*RotateEpochSuccess)(nil),            // 33: WAWebLabyrinthWaWasm.RotateEpochSuccess
-	(*ComputeClientSealTokenInput)(nil),   // 34: WAWebLabyrinthWaWasm.ComputeClientSealTokenInput
-	(*ComputeClientSealTokenOutput)(nil),  // 35: WAWebLabyrinthWaWasm.ComputeClientSealTokenOutput
-	(*ComputeClientSealTokenSuccess)(nil), // 36: WAWebLabyrinthWaWasm.ComputeClientSealTokenSuccess
-	(*SealThreadIdInput)(nil),             // 37: WAWebLabyrinthWaWasm.SealThreadIdInput
-	(*SealThreadIdOutput)(nil),            // 38: WAWebLabyrinthWaWasm.SealThreadIdOutput
-	(*SealThreadIdSuccess)(nil),           // 39: WAWebLabyrinthWaWasm.SealThreadIdSuccess
-	(*OpenSealedThreadIdInput)(nil),       // 40: WAWebLabyrinthWaWasm.OpenSealedThreadIdInput
-	(*OpenSealedThreadIdOutput)(nil),      // 41: WAWebLabyrinthWaWasm.OpenSealedThreadIdOutput
-	(*OpenSealedThreadIdSuccess)(nil),     // 42: WAWebLabyrinthWaWasm.OpenSealedThreadIdSuccess
-	(*EpochIds)(nil),                      // 43: WAWebLabyrinthWaWasm.EpochIds
-	(*ForwardEdgeInput)(nil),              // 44: WAWebLabyrinthWaWasm.ForwardEdgeInput
-	(*EpochDerivationEdge)(nil),           // 45: WAWebLabyrinthWaWasm.EpochDerivationEdge
-	(*DeriveEpochsInput)(nil),             // 46: WAWebLabyrinthWaWasm.DeriveEpochsInput
-	(*DeriveEpochsOutput)(nil),            // 47: WAWebLabyrinthWaWasm.DeriveEpochsOutput
-	(*DeriveEpochsSuccess)(nil),           // 48: WAWebLabyrinthWaWasm.DeriveEpochsSuccess
-	(*PrepareAddPeerDeviceInput)(nil),     // 49: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInput
-	(*PrepareAddPeerDeviceOutput)(nil),    // 50: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceOutput
-	(*PrepareAddPeerDeviceSuccess)(nil),   // 51: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceSuccess
-	(*LabyrinthWaCommand)(nil),            // 52: WAWebLabyrinthWaWasm.LabyrinthWaCommand
+	(*CreateBackupInput)(nil),                   // 0: WAWebLabyrinthWaWasm.CreateBackupInput
+	(*EncryptMessageInput)(nil),                 // 1: WAWebLabyrinthWaWasm.EncryptMessageInput
+	(*DecryptMessageInput)(nil),                 // 2: WAWebLabyrinthWaWasm.DecryptMessageInput
+	(*OrfThreadIdInput)(nil),                    // 3: WAWebLabyrinthWaWasm.OrfThreadIdInput
+	(*DeriveMessageKeyInput)(nil),               // 4: WAWebLabyrinthWaWasm.DeriveMessageKeyInput
+	(*DeriveVirtualDeviceIdInput)(nil),          // 5: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdInput
+	(*AddDeviceSyncEpochInput)(nil),             // 6: WAWebLabyrinthWaWasm.AddDeviceSyncEpochInput
+	(*PrepareAddDeviceInput)(nil),               // 7: WAWebLabyrinthWaWasm.PrepareAddDeviceInput
+	(*DeviceOutput)(nil),                        // 8: WAWebLabyrinthWaWasm.DeviceOutput
+	(*EncryptedSecretValuesOutput)(nil),         // 9: WAWebLabyrinthWaWasm.EncryptedSecretValuesOutput
+	(*VirtualDeviceOutput)(nil),                 // 10: WAWebLabyrinthWaWasm.VirtualDeviceOutput
+	(*Epoch0Output)(nil),                        // 11: WAWebLabyrinthWaWasm.Epoch0Output
+	(*CreateBackupOutput)(nil),                  // 12: WAWebLabyrinthWaWasm.CreateBackupOutput
+	(*CreateBackupSuccess)(nil),                 // 13: WAWebLabyrinthWaWasm.CreateBackupSuccess
+	(*EncryptMessageOutput)(nil),                // 14: WAWebLabyrinthWaWasm.EncryptMessageOutput
+	(*EncryptMessageSuccess)(nil),               // 15: WAWebLabyrinthWaWasm.EncryptMessageSuccess
+	(*DecryptMessageOutput)(nil),                // 16: WAWebLabyrinthWaWasm.DecryptMessageOutput
+	(*DecryptMessageSuccess)(nil),               // 17: WAWebLabyrinthWaWasm.DecryptMessageSuccess
+	(*OrfThreadIdOutput)(nil),                   // 18: WAWebLabyrinthWaWasm.OrfThreadIdOutput
+	(*OrfThreadIdSuccess)(nil),                  // 19: WAWebLabyrinthWaWasm.OrfThreadIdSuccess
+	(*DeriveMessageKeyOutput)(nil),              // 20: WAWebLabyrinthWaWasm.DeriveMessageKeyOutput
+	(*DeriveMessageKeySuccess)(nil),             // 21: WAWebLabyrinthWaWasm.DeriveMessageKeySuccess
+	(*DeriveVirtualDeviceIdOutput)(nil),         // 22: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdOutput
+	(*DeriveVirtualDeviceIdSuccess)(nil),        // 23: WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdSuccess
+	(*AddDeviceKeysOutput)(nil),                 // 24: WAWebLabyrinthWaWasm.AddDeviceKeysOutput
+	(*EpochKey)(nil),                            // 25: WAWebLabyrinthWaWasm.EpochKey
+	(*PrepareAddDeviceOutput)(nil),              // 26: WAWebLabyrinthWaWasm.PrepareAddDeviceOutput
+	(*PrepareAddDeviceSuccess)(nil),             // 27: WAWebLabyrinthWaWasm.PrepareAddDeviceSuccess
+	(*RotateEpochMemberInput)(nil),              // 28: WAWebLabyrinthWaWasm.RotateEpochMemberInput
+	(*RotateEpochInput)(nil),                    // 29: WAWebLabyrinthWaWasm.RotateEpochInput
+	(*RotateEpochMemberEdge)(nil),               // 30: WAWebLabyrinthWaWasm.RotateEpochMemberEdge
+	(*BackwardEdge)(nil),                        // 31: WAWebLabyrinthWaWasm.BackwardEdge
+	(*RotateEpochOutput)(nil),                   // 32: WAWebLabyrinthWaWasm.RotateEpochOutput
+	(*RotateEpochSuccess)(nil),                  // 33: WAWebLabyrinthWaWasm.RotateEpochSuccess
+	(*ComputeClientSealTokenInput)(nil),         // 34: WAWebLabyrinthWaWasm.ComputeClientSealTokenInput
+	(*ComputeClientSealTokenOutput)(nil),        // 35: WAWebLabyrinthWaWasm.ComputeClientSealTokenOutput
+	(*ComputeClientSealTokenSuccess)(nil),       // 36: WAWebLabyrinthWaWasm.ComputeClientSealTokenSuccess
+	(*SealThreadIdInput)(nil),                   // 37: WAWebLabyrinthWaWasm.SealThreadIdInput
+	(*SealThreadIdOutput)(nil),                  // 38: WAWebLabyrinthWaWasm.SealThreadIdOutput
+	(*SealThreadIdSuccess)(nil),                 // 39: WAWebLabyrinthWaWasm.SealThreadIdSuccess
+	(*OpenSealedThreadIdInput)(nil),             // 40: WAWebLabyrinthWaWasm.OpenSealedThreadIdInput
+	(*OpenSealedThreadIdOutput)(nil),            // 41: WAWebLabyrinthWaWasm.OpenSealedThreadIdOutput
+	(*OpenSealedThreadIdSuccess)(nil),           // 42: WAWebLabyrinthWaWasm.OpenSealedThreadIdSuccess
+	(*EpochIds)(nil),                            // 43: WAWebLabyrinthWaWasm.EpochIds
+	(*ForwardEdgeInput)(nil),                    // 44: WAWebLabyrinthWaWasm.ForwardEdgeInput
+	(*EpochDerivationEdge)(nil),                 // 45: WAWebLabyrinthWaWasm.EpochDerivationEdge
+	(*DeriveEpochsInput)(nil),                   // 46: WAWebLabyrinthWaWasm.DeriveEpochsInput
+	(*DeriveEpochsOutput)(nil),                  // 47: WAWebLabyrinthWaWasm.DeriveEpochsOutput
+	(*DeriveEpochsSuccess)(nil),                 // 48: WAWebLabyrinthWaWasm.DeriveEpochsSuccess
+	(*PrepareAddPeerDeviceInput)(nil),           // 49: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInput
+	(*PrepareAddPeerDeviceOutput)(nil),          // 50: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceOutput
+	(*PrepareAddPeerDeviceSuccess)(nil),         // 51: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceSuccess
+	(*CompanionTestMessageThreadIdInput)(nil),   // 52: WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdInput
+	(*CompanionTestMessageThreadIdOutput)(nil),  // 53: WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdOutput
+	(*CompanionTestMessageThreadIdSuccess)(nil), // 54: WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdSuccess
+	(*ParseCompanionTestMessageInput)(nil),      // 55: WAWebLabyrinthWaWasm.ParseCompanionTestMessageInput
+	(*ParseCompanionTestMessageOutput)(nil),     // 56: WAWebLabyrinthWaWasm.ParseCompanionTestMessageOutput
+	(*ParseCompanionTestMessageSuccess)(nil),    // 57: WAWebLabyrinthWaWasm.ParseCompanionTestMessageSuccess
+	(*LabyrinthWaCommand)(nil),                  // 58: WAWebLabyrinthWaWasm.LabyrinthWaCommand
 }
 var file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_depIdxs = []int32{
 	6,  // 0: WAWebLabyrinthWaWasm.PrepareAddDeviceInput.syncEpochs:type_name -> WAWebLabyrinthWaWasm.AddDeviceSyncEpochInput
@@ -4360,24 +4728,28 @@ var file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_depIdxs = []int32{
 	25, // 28: WAWebLabyrinthWaWasm.DeriveEpochsSuccess.epochs:type_name -> WAWebLabyrinthWaWasm.EpochKey
 	51, // 29: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceOutput.success:type_name -> WAWebLabyrinthWaWasm.PrepareAddPeerDeviceSuccess
 	27, // 30: WAWebLabyrinthWaWasm.PrepareAddPeerDeviceSuccess.enrolment:type_name -> WAWebLabyrinthWaWasm.PrepareAddDeviceSuccess
-	0,  // 31: WAWebLabyrinthWaWasm.LabyrinthWaCommand.createBackupInput:type_name -> WAWebLabyrinthWaWasm.CreateBackupInput
-	1,  // 32: WAWebLabyrinthWaWasm.LabyrinthWaCommand.encryptMessageInput:type_name -> WAWebLabyrinthWaWasm.EncryptMessageInput
-	2,  // 33: WAWebLabyrinthWaWasm.LabyrinthWaCommand.decryptMessageInput:type_name -> WAWebLabyrinthWaWasm.DecryptMessageInput
-	3,  // 34: WAWebLabyrinthWaWasm.LabyrinthWaCommand.orfThreadIDInput:type_name -> WAWebLabyrinthWaWasm.OrfThreadIdInput
-	4,  // 35: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveMessageKeyInput:type_name -> WAWebLabyrinthWaWasm.DeriveMessageKeyInput
-	29, // 36: WAWebLabyrinthWaWasm.LabyrinthWaCommand.rotateEpochInput:type_name -> WAWebLabyrinthWaWasm.RotateEpochInput
-	5,  // 37: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveVirtualDeviceIDInput:type_name -> WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdInput
-	7,  // 38: WAWebLabyrinthWaWasm.LabyrinthWaCommand.prepareAddDeviceInput:type_name -> WAWebLabyrinthWaWasm.PrepareAddDeviceInput
-	34, // 39: WAWebLabyrinthWaWasm.LabyrinthWaCommand.computeClientSealTokenInput:type_name -> WAWebLabyrinthWaWasm.ComputeClientSealTokenInput
-	40, // 40: WAWebLabyrinthWaWasm.LabyrinthWaCommand.openSealedThreadIDInput:type_name -> WAWebLabyrinthWaWasm.OpenSealedThreadIdInput
-	46, // 41: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveEpochsInput:type_name -> WAWebLabyrinthWaWasm.DeriveEpochsInput
-	37, // 42: WAWebLabyrinthWaWasm.LabyrinthWaCommand.sealThreadIDInput:type_name -> WAWebLabyrinthWaWasm.SealThreadIdInput
-	49, // 43: WAWebLabyrinthWaWasm.LabyrinthWaCommand.prepareAddPeerDeviceInput:type_name -> WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInput
-	44, // [44:44] is the sub-list for method output_type
-	44, // [44:44] is the sub-list for method input_type
-	44, // [44:44] is the sub-list for extension type_name
-	44, // [44:44] is the sub-list for extension extendee
-	0,  // [0:44] is the sub-list for field type_name
+	54, // 31: WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdOutput.success:type_name -> WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdSuccess
+	57, // 32: WAWebLabyrinthWaWasm.ParseCompanionTestMessageOutput.success:type_name -> WAWebLabyrinthWaWasm.ParseCompanionTestMessageSuccess
+	0,  // 33: WAWebLabyrinthWaWasm.LabyrinthWaCommand.createBackupInput:type_name -> WAWebLabyrinthWaWasm.CreateBackupInput
+	1,  // 34: WAWebLabyrinthWaWasm.LabyrinthWaCommand.encryptMessageInput:type_name -> WAWebLabyrinthWaWasm.EncryptMessageInput
+	2,  // 35: WAWebLabyrinthWaWasm.LabyrinthWaCommand.decryptMessageInput:type_name -> WAWebLabyrinthWaWasm.DecryptMessageInput
+	3,  // 36: WAWebLabyrinthWaWasm.LabyrinthWaCommand.orfThreadIDInput:type_name -> WAWebLabyrinthWaWasm.OrfThreadIdInput
+	4,  // 37: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveMessageKeyInput:type_name -> WAWebLabyrinthWaWasm.DeriveMessageKeyInput
+	29, // 38: WAWebLabyrinthWaWasm.LabyrinthWaCommand.rotateEpochInput:type_name -> WAWebLabyrinthWaWasm.RotateEpochInput
+	5,  // 39: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveVirtualDeviceIDInput:type_name -> WAWebLabyrinthWaWasm.DeriveVirtualDeviceIdInput
+	7,  // 40: WAWebLabyrinthWaWasm.LabyrinthWaCommand.prepareAddDeviceInput:type_name -> WAWebLabyrinthWaWasm.PrepareAddDeviceInput
+	34, // 41: WAWebLabyrinthWaWasm.LabyrinthWaCommand.computeClientSealTokenInput:type_name -> WAWebLabyrinthWaWasm.ComputeClientSealTokenInput
+	40, // 42: WAWebLabyrinthWaWasm.LabyrinthWaCommand.openSealedThreadIDInput:type_name -> WAWebLabyrinthWaWasm.OpenSealedThreadIdInput
+	46, // 43: WAWebLabyrinthWaWasm.LabyrinthWaCommand.deriveEpochsInput:type_name -> WAWebLabyrinthWaWasm.DeriveEpochsInput
+	37, // 44: WAWebLabyrinthWaWasm.LabyrinthWaCommand.sealThreadIDInput:type_name -> WAWebLabyrinthWaWasm.SealThreadIdInput
+	49, // 45: WAWebLabyrinthWaWasm.LabyrinthWaCommand.prepareAddPeerDeviceInput:type_name -> WAWebLabyrinthWaWasm.PrepareAddPeerDeviceInput
+	52, // 46: WAWebLabyrinthWaWasm.LabyrinthWaCommand.companionTestMessageThreadIDInput:type_name -> WAWebLabyrinthWaWasm.CompanionTestMessageThreadIdInput
+	55, // 47: WAWebLabyrinthWaWasm.LabyrinthWaCommand.parseCompanionTestMessageInput:type_name -> WAWebLabyrinthWaWasm.ParseCompanionTestMessageInput
+	48, // [48:48] is the sub-list for method output_type
+	48, // [48:48] is the sub-list for method input_type
+	48, // [48:48] is the sub-list for extension type_name
+	48, // [48:48] is the sub-list for extension extendee
+	0,  // [0:48] is the sub-list for field type_name
 }
 
 func init() { file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_init() }
@@ -4437,7 +4809,15 @@ func file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_init() {
 		(*PrepareAddPeerDeviceOutput_Success)(nil),
 		(*PrepareAddPeerDeviceOutput_Error)(nil),
 	}
-	file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[52].OneofWrappers = []any{
+	file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[53].OneofWrappers = []any{
+		(*CompanionTestMessageThreadIdOutput_Success)(nil),
+		(*CompanionTestMessageThreadIdOutput_Error)(nil),
+	}
+	file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[56].OneofWrappers = []any{
+		(*ParseCompanionTestMessageOutput_Success)(nil),
+		(*ParseCompanionTestMessageOutput_Error)(nil),
+	}
+	file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_msgTypes[58].OneofWrappers = []any{
 		(*LabyrinthWaCommand_CreateBackupInput)(nil),
 		(*LabyrinthWaCommand_EncryptMessageInput)(nil),
 		(*LabyrinthWaCommand_DecryptMessageInput)(nil),
@@ -4451,6 +4831,8 @@ func file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_init() {
 		(*LabyrinthWaCommand_DeriveEpochsInput)(nil),
 		(*LabyrinthWaCommand_SealThreadIDInput)(nil),
 		(*LabyrinthWaCommand_PrepareAddPeerDeviceInput)(nil),
+		(*LabyrinthWaCommand_CompanionTestMessageThreadIDInput)(nil),
+		(*LabyrinthWaCommand_ParseCompanionTestMessageInput)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4458,7 +4840,7 @@ func file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc), len(file_waWebLabyrinthWaWasm_WAWebLabyrinthWaWasm_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   53,
+			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

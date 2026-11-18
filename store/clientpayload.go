@@ -109,6 +109,7 @@ var BaseClientPayload = &waWa6.ClientPayload{
 		OsVersion:      new("0.1"),
 		Manufacturer:   new(""),
 		Device:         new("Desktop"),
+		DeviceType:     waWa6.ClientPayload_UserAgent_DESKTOP.Enum(),
 		OsBuildNumber:  new("0.1"),
 
 		LocaleLanguageIso6391:       new("en"),

@@ -23,6 +23,7 @@ import (
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"go.mau.fi/whatsmeow/util/hkdfutil"
 	"go.mau.fi/whatsmeow/util/keys"
 )
@@ -160,6 +161,15 @@ func (cli *Client) handleCodePairNotification(ctx context.Context, parentNode *w
 	linkCache := cli.phoneLinkingCache.Load()
 	if linkCache == nil {
 		return fmt.Errorf("received code pair notification without a pending pairing")
+	}
+	if stage, _ := node.Attrs["stage"].(string); stage == "refresh_code" {
+		refNode, _ := node.GetChildByTag("link_code_pairing_ref").Content.([]byte)
+		if string(refNode) != linkCache.pairingRef {
+			return nil
+		}
+		forceManual, _ := node.Attrs["force_manual_refresh"].(string)
+		cli.dispatchEvent(&events.PairCodeRefresh{ForceManual: forceManual == "true"})
+		return nil
 	}
 	cli.paired.Store(false)
 	linkCodePairingRef, _ := node.GetChildByTag("link_code_pairing_ref").Content.([]byte)

@@ -44,6 +44,15 @@ type QR struct {
 	Codes []string
 }
 
+// PairCodeRefresh is emitted when the phone asks the companion to replace the
+// phone-number pairing code it is showing (a link_code_companion_reg
+// notification with stage refresh_code for the current pairing ref).
+// ForceManual means WhatsApp Web shows "Code expired" and waits for the user
+// instead of generating a new code by itself.
+type PairCodeRefresh struct {
+	ForceManual bool
+}
+
 type RotateADVSecret struct {
 	OldSecret string
 	NewSecret string

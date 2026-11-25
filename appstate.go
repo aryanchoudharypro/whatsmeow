@@ -457,6 +457,14 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 	case appstate.IndexContact:
 		act := mutation.Action.GetContactAction()
 		eventToDispatch = &events.Contact{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
+		// WA Web's contact sync stores ContactAction.lidJid as a LID-PN
+		// mapping, so chats under the LID resolve to the saved contact.
+		if lid, err := types.ParseJID(act.GetLidJID()); err == nil && lid.Server == types.HiddenUserServer &&
+			jid.Server == types.DefaultUserServer && cli.Store.LIDs != nil {
+			if err := cli.Store.LIDs.PutLIDMapping(ctx, lid, jid); err != nil {
+				cli.Log.Warnf("Failed to store LID mapping from contact action for %s: %v", jid, err)
+			}
+		}
 		if cli.Store.Contacts != nil {
 			storeUpdateError = cli.Store.Contacts.PutContactName(ctx, jid, act.GetFirstName(), act.GetFullName())
 		}

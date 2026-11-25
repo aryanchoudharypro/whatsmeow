@@ -278,7 +278,7 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 	// only the contact-specific store update and event differ, so handle it
 	// before the blanket SET-only guard below (which still applies to every
 	// other index; a remove for those is intentionally left unhandled).
-	if len(mutation.Index) > 0 && mutation.Index[0] == appstate.IndexContact && mutation.Operation == waServerSync.SyncdMutation_REMOVE {
+	if len(mutation.Index) > 0 && (mutation.Index[0] == appstate.IndexContact || mutation.Index[0] == appstate.IndexLIDContact) && mutation.Operation == waServerSync.SyncdMutation_REMOVE {
 		var jid types.JID
 		if len(mutation.Index) > 1 {
 			jid, _ = types.ParseJID(mutation.Index[1])
@@ -467,6 +467,15 @@ func (cli *Client) dispatchAppState(ctx context.Context, name appstate.WAPatchNa
 		}
 		if cli.Store.Contacts != nil {
 			storeUpdateError = cli.Store.Contacts.PutContactName(ctx, jid, act.GetFirstName(), act.GetFullName())
+		}
+	case appstate.IndexLIDContact:
+		// WA Web's WAWebLidContactSync: contacts saved only under a LID or a
+		// username. Reported as a Contact on the LID.
+		lc := mutation.Action.GetLidContactAction()
+		act := &waSyncAction.ContactAction{FullName: lc.FullName, FirstName: lc.FirstName, Username: lc.Username, Birthday: lc.Birthday}
+		eventToDispatch = &events.Contact{JID: jid, Timestamp: ts, Action: act, FromFullSync: fullSync}
+		if cli.Store.Contacts != nil {
+			storeUpdateError = cli.Store.Contacts.PutContactName(ctx, jid, lc.GetFirstName(), lc.GetFullName())
 		}
 	case appstate.IndexClearChat:
 		act := mutation.Action.GetClearChatAction()

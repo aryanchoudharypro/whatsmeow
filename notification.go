@@ -667,6 +667,16 @@ func (cli *Client) handleNotification(ctx context.Context, node *waBinary.Node) 
 			}
 			if groupChange, ok := evt.(*events.GroupInfo); ok {
 				cli.afterGroupChange(ctx, groupChange)
+				// WA Web's updateDBForGroupAction: the notification's notify
+				// attribute is the acting member's push name.
+				if groupChange.Notify != "" && groupChange.Notify != "-" && !groupChange.Sender.IsEmpty() {
+					go cli.updatePushName(ctx, *groupChange.Sender, derefJID(groupChange.SenderPN), nil, groupChange.Notify)
+				}
+			} else if joined, ok := evt.(*events.JoinedGroup); ok {
+				// WA Web's handleGroupCreation does the same for the creator.
+				if joined.Notify != "" && joined.Notify != "-" && !joined.Sender.IsEmpty() {
+					go cli.updatePushName(ctx, *joined.Sender, derefJID(joined.SenderPN), nil, joined.Notify)
+				}
 			}
 			cancelled = cli.dispatchEvent(evt)
 		}
@@ -702,4 +712,11 @@ func (cli *Client) handleNotification(ctx context.Context, node *waBinary.Node) 
 	default:
 		cli.Log.Debugf("Unhandled notification with type %s", notifType)
 	}
+}
+
+func derefJID(jid *types.JID) types.JID {
+	if jid == nil {
+		return types.EmptyJID
+	}
+	return *jid
 }

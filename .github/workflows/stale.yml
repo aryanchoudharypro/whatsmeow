@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   lock-stale:
+    if: github.repository_owner == 'aryanchoudharypro'
     runs-on: ubuntu-latest
     steps:
       - uses: dessant/lock-threads@v6

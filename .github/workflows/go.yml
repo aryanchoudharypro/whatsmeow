@@ -7,6 +7,7 @@ env:
 
 jobs:
   build:
+    if: github.repository_owner == 'aryanchoudharypro'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

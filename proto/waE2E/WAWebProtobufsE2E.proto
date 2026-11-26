@@ -1068,6 +1068,7 @@ message ProtocolMessage {
 		GROUP_ROOT_KEY_REQUEST = 42;
 		MEMBERSHIP_FORM_KEY_FINGERPRINT_VERIFICATION = 43;
 		GROUP_ROOT_KEY_SHARE = 44;
+		DRAFT_MESSAGE_SYNC = 45;
 	}
 
 	optional WACommon.MessageKey key = 1;
@@ -1107,6 +1108,30 @@ message ProtocolMessage {
 	optional GroupRootKeyRequest groupRootKeyRequest = 39;
 	optional MembershipFormKeyFingerprintVerification membershipFormKeyFingerprintVerification = 40;
 	optional GroupRootKeyShare groupRootKeyShare = 41;
+	optional DraftMessageSync draftMessageSync = 43;
+}
+
+message DraftMessageSync {
+	enum Action {
+		ACTION_UNKNOWN = 0;
+		SET = 1;
+		CLEAR = 2;
+	}
+
+	enum ClearReason {
+		CLEAR_REASON_UNKNOWN = 0;
+		USER_CLEARED = 1;
+		SENT = 2;
+		CHAT_LOCKED = 3;
+		REPLACED_BY_NON_TEXT = 4;
+	}
+
+	optional string chatJID = 1;
+	optional string altChatJID = 2;
+	optional Action action = 3;
+	optional int64 editTimestampMS = 4;
+	optional Message draft = 5;
+	optional ClearReason clearReason = 6;
 }
 
 message CloudAPIThreadControlNotification {

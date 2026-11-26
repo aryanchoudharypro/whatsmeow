@@ -96,7 +96,8 @@ func (cli *Client) SendMediaRetryReceipt(ctx context.Context, message *types.Mes
 		"jid":     message.Chat,
 		"from_me": message.IsFromMe,
 	}
-	if message.IsGroup {
+	// WA Web names the sender for group and broadcast (status) messages.
+	if message.IsGroup || message.Chat.Server == types.BroadcastServer {
 		rmrAttrs["participant"] = message.Sender
 	}
 

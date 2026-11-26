@@ -82,7 +82,12 @@ func (cli *Client) SendMediaRetryReceipt(ctx context.Context, message *types.Mes
 	if err != nil {
 		return fmt.Errorf("failed to prepare encrypted retry receipt: %w", err)
 	}
-	ownID := cli.getOwnID().ToNonAD()
+	// WA Web (WAWebSendServerErrorReceiptJob) addresses the request to the
+	// account's own LID.
+	ownID := cli.getOwnLID().ToNonAD()
+	if ownID.IsEmpty() {
+		ownID = cli.getOwnID().ToNonAD()
+	}
 	if ownID.IsEmpty() {
 		return ErrNotLoggedIn
 	}

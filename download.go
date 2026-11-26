@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -316,7 +315,7 @@ func (cli *Client) DownloadMediaWithPath(
 	}
 	for i, host := range mediaConn.Hosts {
 		// TODO omit hash for unencrypted media?
-		mediaURL := fmt.Sprintf("https://%s%s&hash=%s&mms-type=%s&__wa-mms=", host.Hostname, directPath, base64.URLEncoding.EncodeToString(encFileHash), mmsType)
+		mediaURL := mediaDownloadURL(ctx, host.Hostname, directPath, encFileHash, mmsType)
 		data, err = cli.downloadAndDecrypt(withFallbackMediaHost(ctx, i < len(mediaConn.Hosts)-1), mediaURL, mediaKey, mediaType, encFileHash, fileHash)
 		if err == nil ||
 			errors.Is(err, ErrInvalidMediaSHA256) ||
@@ -378,7 +377,7 @@ func shouldRetryMediaDownload(err error) bool {
 	var httpErr DownloadHTTPError
 	return errors.As(err, &netErr) ||
 		strings.HasPrefix(err.Error(), "stream error:") || // hacky check for http2 errors
-		(errors.As(err, &httpErr) && retryafter.Should(httpErr.StatusCode, true))
+		(errors.As(err, &httpErr) && (retryafter.Should(httpErr.StatusCode, true) || shouldRetryMediaDownloadStatus(httpErr.StatusCode)))
 }
 
 func (cli *Client) downloadPossiblyEncryptedMediaWithRetries(ctx context.Context, url string, checksum []byte) (file, mac []byte, err error) {
@@ -424,8 +423,9 @@ func (cli *Client) doMediaDownloadRequest(ctx context.Context, url string) (*htt
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		expired := resp.StatusCode == http.StatusForbidden && isExpiredForbidden(resp, url)
 		_ = resp.Body.Close()
-		return nil, DownloadHTTPError{Response: resp}
+		return nil, DownloadHTTPError{Response: resp, expired: expired}
 	}
 	return resp, nil
 }

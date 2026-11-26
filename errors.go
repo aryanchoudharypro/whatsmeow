@@ -118,6 +118,9 @@ var (
 
 type DownloadHTTPError struct {
 	*http.Response
+
+	// expired is set on a 403 that WhatsApp Web would treat as an expired link.
+	expired bool
 }
 
 func (dhe DownloadHTTPError) Error() string {

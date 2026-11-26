@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -102,7 +101,7 @@ func (cli *Client) DownloadMediaWithPathToFile(
 	}
 	for i, host := range mediaConn.Hosts {
 		// TODO omit hash for unencrypted media?
-		mediaURL := fmt.Sprintf("https://%s%s&hash=%s&mms-type=%s&__wa-mms=", host.Hostname, directPath, base64.URLEncoding.EncodeToString(encFileHash), mmsType)
+		mediaURL := mediaDownloadURL(ctx, host.Hostname, directPath, encFileHash, mmsType)
 		err = cli.downloadAndDecryptToFile(withFallbackMediaHost(ctx, i < len(mediaConn.Hosts)-1), mediaURL, mediaKey, mediaType, encFileHash, fileHash, file)
 		if err == nil ||
 			errors.Is(err, ErrInvalidMediaSHA256) ||

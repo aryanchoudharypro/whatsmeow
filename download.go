@@ -323,6 +323,7 @@ func (cli *Client) DownloadMediaWithPath(
 			// hash (WAWebMmsClientIsErrorRetryable); another host serves
 			// the same object.
 			errors.Is(err, ErrInvalidMediaEncSHA256) ||
+			errors.Is(err, ErrInvalidMediaHMAC) ||
 			errors.Is(err, ErrMediaDownloadFailedWith403) ||
 			errors.Is(err, ErrMediaDownloadFailedWith404) ||
 			errors.Is(err, ErrMediaDownloadFailedWith410) ||

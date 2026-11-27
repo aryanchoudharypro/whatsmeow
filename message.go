@@ -336,7 +336,7 @@ func (cli *Client) decryptMessages(ctx context.Context, info *types.MessageInfo,
 		cli.backgroundIfAsyncAck(func() {
 			// WA Web never asks the phone to resend view once (or hosted) fanouts:
 			// they are only meant to be opened on the phone.
-			if uType != events.UnavailableTypeViewOnce && unavailableNode.AttrGetter().OptionalString("hosted") != "true" {
+			if uType != events.UnavailableTypeViewOnce && uType != events.UnavailableTypeSenderDrop && unavailableNode.AttrGetter().OptionalString("hosted") != "true" {
 				cli.immediateRequestMessageFromPhone(ctx, info)
 			}
 			cli.sendAck(ctx, node, 0)

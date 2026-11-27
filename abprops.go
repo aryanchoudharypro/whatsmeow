@@ -28,12 +28,18 @@ const (
 type ABProps map[int]string
 
 // Bool reads a flag that's on or off, with def when the server didn't send it.
+// Like WA Web (WAWebABPropsParseConfigValue), "1", "True" and "true" are on.
 func (props ABProps) Bool(code int, def bool) bool {
 	value, ok := props[code]
 	if !ok {
 		return def
 	}
-	return value == "1" || value == "true"
+	return ParseABPropBool(value)
+}
+
+// ParseABPropBool reads a bool flag's value the way WA Web does.
+func ParseABPropBool(value string) bool {
+	return value == "1" || value == "True" || value == "true"
 }
 
 // GetABProps fetches the server's feature flags, the way WhatsApp Web does

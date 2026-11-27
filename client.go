@@ -161,6 +161,13 @@ type Client struct {
 	// abPropsServerRefreshID the one the server named in its last <success>.
 	abPropsRefreshID       int
 	abPropsServerRefreshID int
+	// abPropsSyncedAt is when the cached flags were last fetched, and
+	// abPropsRefresh how long the server said they stay good.
+	abPropsSyncedAt time.Time
+	abPropsRefresh  time.Duration
+	// abPropsAnnounced is whether ABPropsRefreshed has gone out for the
+	// flags loaded from the store.
+	abPropsAnnounced bool
 
 	lastUnifiedSession atomic.Int64
 

@@ -24,6 +24,7 @@ const (
 	connStateServerCertChain    = "server_cert_chain"
 	connStateSignedPreKeyRotate = "signed_prekey_rotated_at"
 	connStateOldSignedPreKeys   = "old_signed_prekeys"
+	connStateABProps            = "ab_props"
 )
 
 // ikFailureThreshold is how many rejected IK resumes it takes before the
@@ -124,6 +125,7 @@ func (cli *Client) loadConnState(ctx context.Context) {
 			cs.signedPreKeyRotatedAt = time.UnixMilli(ms)
 		}
 	}
+	cli.loadABProps(ctx)
 	cli.Store.OldSignedPreKeys = nil
 	if raw := cli.getConnState(ctx, connStateOldSignedPreKeys); raw != nil {
 		var stored []storedSignedPreKey
@@ -156,6 +158,7 @@ func (cli *Client) initConnStateAfterPair(ctx context.Context) {
 	cs.ikFailures = 0
 	cs.signedPreKeyRotatedAt = time.Now()
 	cs.Unlock()
+	cli.resetABProps()
 	cli.Store.LoginCounter = 0
 	cli.Store.OldSignedPreKeys = nil
 	cli.putConnState(ctx, connStateLoginCounter, []byte("0"))

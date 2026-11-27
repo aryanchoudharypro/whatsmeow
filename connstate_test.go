@@ -623,25 +623,25 @@ func TestABPropsAreOnlyFetchedAgainWhenTheServerNamesANewSet(t *testing.T) {
 		return &waBinary.Node{Tag: "iq", Content: []waBinary.Node{{Tag: "props", Attrs: attrs}}}
 	}
 	cli.abPropsServerRefreshID = 7
-	if cli.abPropsAreCurrent() {
+	if cli.abPropsAreCurrent(time.Now()) {
 		t.Fatal("nothing is cached yet, so there is nothing current")
 	}
 	cli.applyABProps(props(waBinary.Attrs{"protocol": "1", "hash": "a", "refresh_id": "7"}))
-	if !cli.abPropsAreCurrent() {
+	if !cli.abPropsAreCurrent(time.Now()) {
 		t.Fatal("the cached set is the one the server named")
 	}
 	cli.abPropsServerRefreshID = 8
-	if cli.abPropsAreCurrent() {
+	if cli.abPropsAreCurrent(time.Now()) {
 		t.Fatal("the server named a newer set")
 	}
 	// An answer that names no ID counts for the ID it was fetched under.
 	cli.applyABProps(props(waBinary.Attrs{"protocol": "1", "hash": "b"}))
-	if !cli.abPropsAreCurrent() {
+	if !cli.abPropsAreCurrent(time.Now()) {
 		t.Fatal("the set fetched under ID 8 is current for ID 8")
 	}
 	// A <success> without an ID gives no reason to ask again.
 	cli.abPropsServerRefreshID = 0
-	if !cli.abPropsAreCurrent() {
+	if !cli.abPropsAreCurrent(time.Now()) {
 		t.Fatal("no ID from the server means the cache stands")
 	}
 }
@@ -662,5 +662,47 @@ func TestUnifiedSessionIsNotSentTwiceInARow(t *testing.T) {
 	cli.sendUnifiedSession(false)
 	if cli.lastUnifiedSession.Load() <= first-unifiedSessionMinGap.Milliseconds() {
 		t.Fatal("a send after the gap was held back")
+	}
+}
+
+func TestABPropsAreKeptAcrossRestarts(t *testing.T) {
+	ctx := context.Background()
+	state := &memConnState{}
+	cli := NewClient(newTestDevice(state), nil)
+	cli.loadConnState(ctx)
+	cli.abPropsServerRefreshID = 5
+	cli.applyABProps(&waBinary.Node{Tag: "iq", Content: []waBinary.Node{{
+		Tag:   "props",
+		Attrs: waBinary.Attrs{"protocol": "1", "hash": "h1", "refresh": "3600"},
+		Content: []waBinary.Node{
+			{Tag: "prop", Attrs: waBinary.Attrs{"config_code": "23845", "config_value": "True"}},
+		},
+	}}})
+	cli.saveABProps(ctx)
+
+	restarted := NewClient(newTestDevice(state), nil)
+	restarted.loadConnState(ctx)
+	if !restarted.CachedABProps().Bool(ABPropScheduledMessagesSenderEnabled, false) || restarted.abPropsHash != "h1" {
+		t.Fatalf("after a restart: %v, hash %q", restarted.CachedABProps(), restarted.abPropsHash)
+	}
+	restarted.abPropsServerRefreshID = 5
+	if !restarted.abPropsAreCurrent(time.Now()) {
+		t.Fatal("the stored set is still the one the server names")
+	}
+	if restarted.abPropsAreCurrent(time.Now().Add(2 * time.Hour)) {
+		t.Fatal("the stored set should go stale after its refresh interval")
+	}
+	restarted.abPropsServerRefreshID = 6
+	if restarted.abPropsAreCurrent(time.Now()) {
+		t.Fatal("a new refresh ID should mean a fetch")
+	}
+	// A full answer without a hash keeps the flags, like WA Web.
+	restarted.applyABProps(&waBinary.Node{Tag: "iq", Content: []waBinary.Node{{Tag: "props", Attrs: waBinary.Attrs{"protocol": "1"}}}})
+	if len(restarted.CachedABProps()) != 1 {
+		t.Fatal("a full answer with no hash dropped the flags")
+	}
+	restarted.resetABProps()
+	if restarted.CachedABProps() != nil {
+		t.Fatal("a new pairing should start without flags")
 	}
 }

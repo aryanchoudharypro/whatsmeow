@@ -47,8 +47,9 @@ var (
 	NewMetaAIJID        = NewJID("867051314767696", BotServer)
 	// TeeMetaAIJID is Meta AI as a member of a group with private processing
 	// (WA Web's META_BOT_TEE_FBID_WID).
-	TeeMetaAIJID = NewJID("1273596044787272", BotServer)
-	MuseJID      = NewJID("1807055946647697", BotServer) // Also known as "hatch"
+	TeeMetaAIJID      = NewJID("1273596044787272", BotServer)
+	MuseJID           = NewJID("1807055946647697", BotServer) // Also known as "hatch"
+	MetaAISideChatJID = NewJID("2942131436135992", BotServer)
 )
 
 var (
